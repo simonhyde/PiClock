@@ -1,0 +1,3 @@
+[submodule "openvg"]
+	path = openvg
+	url = https://github.com/ajstarks/openvg.git
