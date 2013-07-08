@@ -1,6 +1,6 @@
 [submodule "openvg"]
 	path = openvg
-	url = https://github.com/ajstarks/openvg.git
+	url = https://github.com/simonhyde/openvg.git
 [submodule "ntpstat"]
 	path = ntpstat
 	url = https://github.com/simonhyde/ntpstat.git
