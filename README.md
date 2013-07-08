@@ -7,6 +7,7 @@ Checkout
 --------
 
 Checkout this project by:
+
 	```shell
         # Install git if you don't already have it
 	sudo apt-get install git
@@ -79,10 +80,14 @@ To configure this to run at startup, I did the following:
 
   and then change the following 2 lines:
 
+	```
 	1:2345:respawn:/sbin/getty -a clock --noclear 38400 tty1 
 	2:23:respawn:/sbin/getty 38400 tty2
+	```
 
   to:
 
+	```
 	1:2345:respawn:/sbin/getty -a piclock --noclear 38400 tty1 
 	2:2345:respawn:/sbin/getty 38400 tty2
+	```
