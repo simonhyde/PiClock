@@ -91,3 +91,8 @@ To configure this to run at startup, I did the following:
 	1:2345:respawn:/sbin/getty -a piclock --noclear 38400 tty1 
 	2:2345:respawn:/sbin/getty 38400 tty2
 	```
+
+Switching to Read Only SD Card
+------------------------------
+
+Once you've got everything working, you may want to make the SD card read-only, to prevent future corruption/wearing out the SD card. Instructions for this can be found at http://www.raspberrypi.org/phpBB3/viewtopic.php?p=213440
