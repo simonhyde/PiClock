@@ -1,0 +1,23 @@
+--- /etc/network/if-up.d/ntpdate.dist	2008-07-09 16:23:38.000000000 +0100
++++ /etc/network/if-up.d/ntpdate	2013-07-08 10:53:26.475049886 +0100
+@@ -39,6 +39,10 @@
+ 	LOCKTOUCHPID="$!"
+ fi
+ 
++if [ -x /etc/init.d/ntp ]; then
++	/etc/init.d/ntp stop
++fi
++
+ /usr/sbin/ntpdate-debian -s $OPTS 2>/dev/null || :
+ 
+ if [ -x /usr/bin/lockfile-create ] ; then
+@@ -46,4 +50,9 @@
+ 	lockfile-remove $LOCKFILE
+ fi
+ 
++if [ -x /etc/init.d/ntp ]; then
++	sleep 5
++	/etc/init.d/ntp restart
++fi
++
+ ) &
