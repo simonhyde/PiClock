@@ -139,8 +139,20 @@ int main() {
 			else
 				Line(0, start, 0, end_short);
 			Rotate(-6);
+#ifndef NO_COLOUR_CHANGE
 			if(i == tm_now.tm_sec)
-				Stroke(255,255,255,1);
+			{
+				if(i < 1)
+				{
+					//Example to fade over 2 seconds...
+					//VGfloat fade = 128.0f * tm_now.tm_sec +  127.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
+					VGfloat fade = 255.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
+					Stroke(255, fade, fade, 1);
+				}
+				else
+					Stroke(255,255,255,1);
+			}
+#endif
 		}
 
 		StrokeWidth(clock_width/200.0f);
