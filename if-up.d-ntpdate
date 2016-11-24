@@ -43,7 +43,7 @@ if [ -x /etc/init.d/ntp ]; then
 	/etc/init.d/ntp stop
 fi
 
-/usr/sbin/ntpdate-debian -s $OPTS 2>/dev/null || :
+/usr/sbin/ntpdate-debian -u -s $OPTS 2>/dev/null || :
 
 if [ -x /usr/bin/lockfile-create ] ; then
 	kill $LOCKTOUCHPID

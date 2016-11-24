@@ -21,7 +21,7 @@ Build
 1. First you'll need to install some dependencies (ntpdate is only suggested for runtime):
 
 	```shell
-	sudo apt-get install libjpeg-dev ntpdate
+	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu
 	```
 
 2. Compile:
@@ -61,7 +61,8 @@ To configure this to run at startup, I did the following:
 1. Add a new user to run the clock:
 
 	```shell
-	sudo adduser piclock
+	sudo adduser --disabled-password piclock
+	sudo usermod --append --groups spi,video piclock
 	```
 
 2. Make the user profile run the clock:
@@ -75,24 +76,22 @@ To configure this to run at startup, I did the following:
 3. Make the system auto-login as the piclock user:
 
 	```shell
-	sudo editor /etc/inittab
+	sudo editor /etc/systemd/system/autologin@.service
 	```
 
-  and then change the following 2 lines:
+  and change:
 
-	```
-	1:2345:respawn:/sbin/getty -a clock --noclear 38400 tty1 
-	2:23:respawn:/sbin/getty 38400 tty2
+  	```
+	ExecStart=-/sbin/agetty --autologin pi --noclear %I $TERM
 	```
 
   to:
 
 	```
-	1:2345:respawn:/sbin/getty -a piclock --noclear 38400 tty1 
-	2:2345:respawn:/sbin/getty 38400 tty2
+	ExecStart=-/sbin/agetty --autologin piclock --noclear %I $TERM
 	```
 
 Switching to Read Only SD Card
 ------------------------------
 
-Once you've got everything working, you may want to make the SD card read-only, to prevent future corruption/wearing out the SD card. Instructions for this can be found at http://www.raspberrypi.org/phpBB3/viewtopic.php?p=213440
+Once you've got everything working, you may want to make the SD card read-only, to prevent future corruption/wearing out the SD card. Instructions for this can be found at https://www.raspberrypi.org/forums/viewtopic.php?p=213440
