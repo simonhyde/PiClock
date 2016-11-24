@@ -1,6 +1,12 @@
 [submodule "openvg"]
 	path = openvg
-	url = https://github.com/simonhyde/openvg.git
+	url = https://github.com/ajstarks/openvg.git
 [submodule "ntpstat"]
 	path = ntpstat
 	url = https://github.com/simonhyde/ntpstat.git
+[submodule "libpifacedigital"]
+	path = libpifacedigital
+	url = https://github.com/piface/libpifacedigital
+[submodule "libmcp23s17"]
+	path = libmcp23s17
+	url = https://github.com/piface/libmcp23s17
