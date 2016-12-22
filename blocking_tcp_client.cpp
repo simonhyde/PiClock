@@ -105,7 +105,7 @@ public:
           ec ? ec : boost::asio::error::operation_aborted);
   }
 
-  std::string read_line(boost::posix_time::time_duration timeout)
+  std::string read_line(boost::posix_time::time_duration timeout, char separator = '\n')
   {
     // Set a deadline for the asynchronous operation. Since this function uses
     // a composed operation (async_read_until), the deadline applies to the
@@ -123,7 +123,7 @@ public:
     // object is used as a callback and will update the ec variable when the
     // operation completes. The blocking_udp_client.cpp example shows how you
     // can use boost::bind rather than boost::lambda.
-    boost::asio::async_read_until(socket_, input_buffer_, '\n', var(ec) = _1);
+    boost::asio::async_read_until(socket_, input_buffer_, separator, var(ec) = _1);
 
     // Block until the asynchronous operation has completed.
     do io_service_.run_one(); while (ec == boost::asio::error::would_block);
@@ -133,14 +133,14 @@ public:
 
     std::string line;
     std::istream is(&input_buffer_);
-    std::getline(is, line);
+    std::getline(is, line, separator);
     return line;
   }
 
   void write_line(const std::string& line,
-      boost::posix_time::time_duration timeout)
+      boost::posix_time::time_duration timeout, char separator = '\n')
   {
-    std::string data = line + "\n";
+    std::string data = line + separator;
 
     // Set a deadline for the asynchronous operation. Since this function uses
     // a composed operation (async_write), the deadline applies to the entire
@@ -196,6 +196,7 @@ private:
   boost::asio::streambuf input_buffer_;
 };
 
+#if 0
 //----------------------------------------------------------------------
 
 int main(int argc, char* argv[])
@@ -239,3 +240,4 @@ int main(int argc, char* argv[])
 
   return 0;
 }
+#endif
