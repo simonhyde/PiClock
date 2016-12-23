@@ -167,6 +167,19 @@ public:
       throw boost::system::system_error(ec);
   }
 
+  void close()
+  {
+    socket_.close();
+  }
+
+  ~client()
+  {
+    if(socket_.is_open())
+    {
+      close();
+    }
+  }
+
 private:
   void check_deadline()
   {

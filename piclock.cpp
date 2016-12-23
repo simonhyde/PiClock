@@ -12,6 +12,8 @@
 #include "fontinfo.h"
 #include "shapes.h"
 #include "ntpstat/ntpstat.h"
+//Bit of a bodge, but generating a header file for this example would be a pain
+#include "blocking_tcp_client.cpp"
 //1 == piface digital
 #define GPI_MODE	1
 
