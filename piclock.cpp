@@ -130,7 +130,7 @@ int main() {
 		Fill(255, 255, 255, 1);
 #endif
 		Text(0,0, "Press Ctrl+C to quit", SerifTypeface, text_width / 150.0f);
-		char * sync_text;
+		const char * sync_text;
 		if(ntp_state_data.status == 0)
 		{
 			Fill(0,100,0,1);
