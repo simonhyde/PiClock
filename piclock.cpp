@@ -1,12 +1,21 @@
 // OpenVG Clock
 // Simon Hyde <simon.hyde@bbc.co.uk>
+#include <thread>
+#include <mutex>
+#include <memory>
+#include <string>
+#include <atomic>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <netdb.h>
 #include <time.h>
 #include <math.h>
 #include <pthread.h>
+#include <openssl/sha.h>
 #include "VG/openvg.h"
 #include "VG/vgu.h"
 #include "fontinfo.h"
@@ -15,7 +24,12 @@
 //Bit of a bodge, but generating a header file for this example would be a pain
 #include "blocking_tcp_client.cpp"
 //1 == piface digital
+//2 == TCP/IP interface (to BNCS)
 #define GPI_MODE	1
+#define TCP_REMOTE_HOST1	"10.68.178.11"
+#define TCP_REMOTE_HOST2	"10.68.178.11"
+#define TCP_SERVICE		"2553"
+#define TCP_SHARED_SECRET	"SharedSecretGoesHere"
 
 #if GPI_MODE == 1
 #include "pifacedigital.h"
@@ -26,16 +40,204 @@
 //Number of micro seconds into a second to start moving the second hand
 #define MOVE_HAND_AT	900000
 
+std::string mac_address;
+int bRunning = 1;
 
 
 void * ntp_check_thread(void * arg)
 {
 	ntpstate_t * data = (ntpstate_t *)arg;
-	while(1)
+	while(bRunning)
 	{
 		get_ntp_state(data);
 		sleep(1);
 	}
+	return NULL;
+}
+
+class TallyColour
+{
+public:
+	uint32_t R()
+	{
+		return (col >> 16)&0xFF;
+	}
+	uint32_t G()
+	{
+		return (col >> 8)&0xFF;
+	}
+	uint32_t B()
+	{
+		return col & 0xFF;
+	}
+	TallyColour(const std::string &input)
+		:col(std::stoul(input, NULL, 16))
+	{
+	}
+	TallyColour()
+		:col(0) //Default to black
+	{
+	}
+
+private:
+	uint32_t col;
+};
+
+class TallyState
+{
+public:
+	TallyColour FG;
+	TallyColour BG;
+	std::string text;
+	TallyState()
+	{}
+	TallyState(const std::string &fg, const std::string &bg, const std::string &_text)
+	 :FG(fg),BG(bg),text(_text)
+	{}
+	TallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text)
+	 :FG(fg),BG(bg),text(_text)
+	{}
+};
+
+class TallyDisplays
+{
+public:
+	int nRows;
+	int nCols;
+	std::map<int,std::map<int,TallyState> > tallies;
+	TallyDisplays()
+	 :nRows(0), nCols(0)
+	{
+	}
+};
+
+std::shared_ptr<TallyDisplays> pTallyDisplays = std::make_shared<TallyDisplays>();
+
+std::string get_arg(const std::string & input, int index, bool bTerminated = true)
+{
+	size_t start_index = 0;
+	while(index > 0)
+	{
+		start_index = input.find(':', start_index) + 1;
+		index--;
+	}
+
+	if(!bTerminated)
+		return input.substr(start_index);
+
+	size_t end = input.find(':',start_index);
+	if(end != std::string::npos)
+		end -= start_index;
+	return input.substr(start_index,end);
+}
+
+int get_arg_int(const std::string &input, int index, bool bTerminated = true)
+{
+	return std::stoi(get_arg(input,1));
+}
+
+int handle_tcp_message(const std::string &message, client & conn)
+{
+	if(message == "PING")
+	{
+		conn.write_line("PONG", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
+		return 2;
+	}
+	std::string cmd = get_arg(message,0);
+	if(cmd == "CRYPT")
+	{
+		uint8_t sha_buf[SHA512_DIGEST_LENGTH];
+		std::string to_digest = get_arg(message,1,false) + TCP_SHARED_SECRET;
+		SHA512((const uint8_t *)to_digest.c_str(), to_digest.length(),
+			sha_buf);
+		char out_buf[SHA512_DIGEST_LENGTH*2 + 1];
+		for(int i = 0; i < SHA512_DIGEST_LENGTH; i++)
+			sprintf(out_buf + i*2, "%02x", sha_buf[i]);
+		std::string to_write = std::string("AUTH:") + std::string(out_buf)
+				   + std::string(":") + mac_address;
+		conn.write_line(to_write, boost::posix_time::time_duration(0,0,10),'\r');
+		return 3;
+	}
+	std::shared_ptr<TallyDisplays> pTd = std::make_shared<TallyDisplays>(*pTallyDisplays);
+	
+	if(cmd == "SETSIZE")
+	{
+		pTd->nRows = get_arg_int(message,1);
+		pTd->nRows = get_arg_int(message,2);
+	}
+	else if(cmd == "SETTALLY")
+	{
+		int row = get_arg_int(message,1);
+		int col = get_arg_int(message,2);
+		pTd->tallies[row][col] = TallyState(get_arg(message,3),
+						  get_arg(message,4),
+						  get_arg(message,5,false));
+	}
+	else
+	{
+		return 0;
+	}
+	std::atomic_store(&pTallyDisplays, pTd);
+	conn.write_line("ACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
+	return 1;
+}
+
+void tcp_thread(const char *remote_host)
+{
+	int retryDelay = 0;
+	while(bRunning)
+	{
+		try
+		{
+			client conn;
+			//Allow 30 seconds for connection
+			conn.connect(remote_host, TCP_SERVICE,
+				boost::posix_time::time_duration(0,0,30,0));
+			while(bRunning)
+			{
+				//Nothing for 5 seconds should prompt a reconnect
+				std::string data = conn.read_line(
+				boost::posix_time::time_duration(0,0,5,0),'\r');
+
+				if(!handle_tcp_message(data, conn))
+					break;
+				retryDelay = 0;
+			}
+		}
+		catch(...)
+		{}
+		if(retryDelay++ > 30)
+			retryDelay = 30;
+		sleep(retryDelay);
+	}
+}
+
+
+void create_tcp_threads()
+{
+	//Determin MAC address...
+	struct ifreq s;
+	int fd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
+	strcpy(s.ifr_name, "eth0");
+	if (0 == ioctl(fd, SIOCGIFHWADDR, &s))
+	{
+		char mac_buf[80];
+		sprintf(mac_buf,"%02x%02x%02x%02x%02x%02x",
+				(unsigned char) s.ifr_addr.sa_data[0],
+				(unsigned char) s.ifr_addr.sa_data[1],
+				(unsigned char) s.ifr_addr.sa_data[2],
+				(unsigned char) s.ifr_addr.sa_data[3],
+				(unsigned char) s.ifr_addr.sa_data[4],
+				(unsigned char) s.ifr_addr.sa_data[5]);
+		mac_address = mac_buf;
+	}
+	else
+	{
+		mac_address = "UNKNOWN";
+	}
+	std::thread t1(tcp_thread, TCP_REMOTE_HOST1);
+	std::thread t2(tcp_thread, TCP_REMOTE_HOST1);
+	t1.detach(); t2.detach();
 }
 
 int main() {
@@ -89,6 +291,9 @@ int main() {
 #if GPI_MODE == 1
 		uint8_t gpis = pifacedigital_read_reg(INPUT,0);
 #endif
+#if GPI_MODE == 2
+		std::shared_ptr<TallyDisplays> pTD = std::atomic_load(pTallyDisplays);
+#endif
 		int i;
 		char buf[256];
 		gettimeofday(&tval, NULL);
@@ -116,7 +321,7 @@ int main() {
 		TextMid(text_width / 2.0f, height * 7.0f/10.0f, buf, SerifTypeface, text_width/15.0f);
 		strftime(buf, sizeof(buf), "%d %b %Y", &tm_now);
 		TextMid(text_width / 2.0f, height * 6.0f/10.0f, buf, SerifTypeface, text_width/15.0f);
-#ifdef GPI_MODE
+#if GPI_MODE == 1
 		uint8_t colour_weight = (gpis & 1) ? 100:255;
 		Fill(colour_weight,colour_weight*0.55,0,1);
 		Roundrect(text_width/100.0f,height*0.5/10.0f,text_width *.98f,height*2.0f/10.0f,width/100.0f, height/100.0f);
@@ -129,8 +334,23 @@ int main() {
 		fill_weight = (gpis & 2)? 100:255;
 		Fill(fill_weight,fill_weight,fill_weight, 1);
 		TextMid(text_width /2.0f, height *3.5f/10.0f, "On Air", SerifTypeface, text_width/10.0f);
-		Fill(255, 255, 255, 1);
 #endif
+#if GPI_MODE == 2
+		//Use 50% of height, 10% up the screen
+		float row_height = height/(2f*(float)pTD->nRows);
+		float col_width = text_width/((float)pTD->nCols);
+		float y_offset = height/10f;
+		for(int row = 0; row < pTD->nRows; row++)
+		{
+			for(int col = 0; col < pTD->nCols; col++)
+			{
+				int base = (pTD->row
+				Fill(pTD->BG.R(),pTD->BG.G(),pTD->BG.B(),1);
+				Roundrect(
+			}
+		}
+#endif
+		Fill(255, 255, 255, 1);
 		Text(0,0, "Press Ctrl+C to quit", SerifTypeface, text_width / 150.0f);
 		const char * sync_text;
 		if(ntp_state_data.status == 0)
@@ -227,6 +447,7 @@ int main() {
 		End();						   			// End the picture
 	}
 
+	bRunning = 0;
 	finish();					            // Graphics cleanup
 	exit(0);
 }
