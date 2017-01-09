@@ -2,15 +2,14 @@
 // Simon Hyde <simon.hyde@bbc.co.uk>
 #include <thread>
 #include <mutex>
-#include <memory>
 #include <string>
-#include <atomic>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <boost/shared_ptr.hpp>
 #include <netdb.h>
 #include <time.h>
 #include <math.h>
@@ -25,10 +24,10 @@
 #include "blocking_tcp_client.cpp"
 //1 == piface digital
 //2 == TCP/IP interface (to BNCS)
-#define GPI_MODE	1
-#define TCP_REMOTE_HOST1	"10.68.178.11"
-#define TCP_REMOTE_HOST2	"10.68.178.11"
-#define TCP_SERVICE		"2553"
+#define GPI_MODE	2
+#define TCP_REMOTE_HOST1	"10.68.178.15"
+#define TCP_REMOTE_HOST2	"10.68.178.15"
+#define TCP_SERVICE		"6254"
 #define TCP_SHARED_SECRET	"SharedSecretGoesHere"
 
 #if GPI_MODE == 1
@@ -58,15 +57,15 @@ void * ntp_check_thread(void * arg)
 class TallyColour
 {
 public:
-	uint32_t R()
+	uint32_t R() const
 	{
 		return (col >> 16)&0xFF;
 	}
-	uint32_t G()
+	uint32_t G() const
 	{
 		return (col >> 8)&0xFF;
 	}
-	uint32_t B()
+	uint32_t B() const
 	{
 		return col & 0xFF;
 	}
@@ -78,8 +77,12 @@ public:
 		:col(0) //Default to black
 	{
 	}
+	bool Equals(const TallyColour & other) const
+	{
+		return other.col == col;
+	}
 
-private:
+protected:
 	uint32_t col;
 };
 
@@ -97,6 +100,12 @@ public:
 	TallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text)
 	 :FG(fg),BG(bg),text(_text)
 	{}
+	bool Equals(const TallyState & other) const
+	{
+		return other.FG.Equals(FG)
+			&& other.BG.Equals(BG)
+			&& other.text == text;
+	}
 };
 
 class TallyDisplays
@@ -104,14 +113,15 @@ class TallyDisplays
 public:
 	int nRows;
 	int nCols;
+	int textSize;
 	std::map<int,std::map<int,TallyState> > tallies;
 	TallyDisplays()
-	 :nRows(0), nCols(0)
+	 :nRows(0), nCols(0), textSize(-1)
 	{
 	}
 };
 
-std::shared_ptr<TallyDisplays> pTallyDisplays = std::make_shared<TallyDisplays>();
+boost::shared_ptr<TallyDisplays> pTallyDisplays(new TallyDisplays());
 
 std::string get_arg(const std::string & input, int index, bool bTerminated = true)
 {
@@ -133,7 +143,7 @@ std::string get_arg(const std::string & input, int index, bool bTerminated = tru
 
 int get_arg_int(const std::string &input, int index, bool bTerminated = true)
 {
-	return std::stoi(get_arg(input,1));
+	return std::stoi(get_arg(input, index));
 }
 
 int handle_tcp_message(const std::string &message, client & conn)
@@ -158,12 +168,17 @@ int handle_tcp_message(const std::string &message, client & conn)
 		conn.write_line(to_write, boost::posix_time::time_duration(0,0,10),'\r');
 		return 3;
 	}
-	std::shared_ptr<TallyDisplays> pTd = std::make_shared<TallyDisplays>(*pTallyDisplays);
+	boost::shared_ptr<TallyDisplays> pOld = pTallyDisplays;
+	boost::shared_ptr<TallyDisplays> pTd(new TallyDisplays(*pOld));
 	
+	bool bChanged = false;
+	bool bSizeChanged = false;
 	if(cmd == "SETSIZE")
 	{
 		pTd->nRows = get_arg_int(message,1);
-		pTd->nRows = get_arg_int(message,2);
+		pTd->nCols = get_arg_int(message,2);
+		bChanged = pOld->nRows != pTd->nRows || pOld->nCols != pTd->nCols;
+		bSizeChanged = bChanged;
 	}
 	else if(cmd == "SETTALLY")
 	{
@@ -172,12 +187,19 @@ int handle_tcp_message(const std::string &message, client & conn)
 		pTd->tallies[row][col] = TallyState(get_arg(message,3),
 						  get_arg(message,4),
 						  get_arg(message,5,false));
+		bChanged = !pTd->tallies[row][col].Equals(pOld->tallies[row][col]);
+		bSizeChanged = pTd->tallies[row][col].text != pOld->tallies[row][col].text;
 	}
 	else
 	{
 		return 0;
 	}
-	std::atomic_store(&pTallyDisplays, pTd);
+	if(bChanged)
+	{
+		if(bSizeChanged)
+			pTd->textSize = -1;
+		pTallyDisplays = pTd;
+	}
 	conn.write_line("ACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
 	return 1;
 }
@@ -222,7 +244,7 @@ void create_tcp_threads()
 	if (0 == ioctl(fd, SIOCGIFHWADDR, &s))
 	{
 		char mac_buf[80];
-		sprintf(mac_buf,"%02x%02x%02x%02x%02x%02x",
+		sprintf(mac_buf,"%02x:%02x:%02x:%02x:%02x:%02x",
 				(unsigned char) s.ifr_addr.sa_data[0],
 				(unsigned char) s.ifr_addr.sa_data[1],
 				(unsigned char) s.ifr_addr.sa_data[2],
@@ -236,7 +258,7 @@ void create_tcp_threads()
 		mac_address = "UNKNOWN";
 	}
 	std::thread t1(tcp_thread, TCP_REMOTE_HOST1);
-	std::thread t2(tcp_thread, TCP_REMOTE_HOST1);
+	std::thread t2(tcp_thread, TCP_REMOTE_HOST2);
 	t1.detach(); t2.detach();
 }
 
@@ -286,13 +308,16 @@ int main() {
 	pthread_attr_t ntp_attr;
 	pthread_attr_init(&ntp_attr);
 	pthread_create(&ntp_thread, &ntp_attr, &ntp_check_thread, &ntp_state_data);
+#if GPI_MODE == 2
+	create_tcp_threads();
+#endif
 	while(1)
 	{
 #if GPI_MODE == 1
 		uint8_t gpis = pifacedigital_read_reg(INPUT,0);
 #endif
 #if GPI_MODE == 2
-		std::shared_ptr<TallyDisplays> pTD = std::atomic_load(pTallyDisplays);
+		boost::shared_ptr<TallyDisplays> pTD = pTallyDisplays;
 #endif
 		int i;
 		char buf[256];
@@ -336,22 +361,56 @@ int main() {
 		TextMid(text_width /2.0f, height *3.5f/10.0f, "On Air", SerifTypeface, text_width/10.0f);
 #endif
 #if GPI_MODE == 2
-		//Use 50% of height, 10% up the screen
-		float row_height = height/(2f*(float)pTD->nRows);
-		float col_width = text_width/((float)pTD->nCols);
-		float y_offset = height/10f;
-		for(int row = 0; row < pTD->nRows; row++)
+		if(pTD->nRows > 0 && pTD->nCols > 0)
 		{
-			for(int col = 0; col < pTD->nCols; col++)
+			//Use 50% of height, 10% up the screen
+			float row_height = height/(2.0f*(float)pTD->nRows);
+			float col_width = text_width/((float)pTD->nCols);
+			if(pTD->textSize < 0)
 			{
-				int base = (pTD->row
-				Fill(pTD->BG.R(),pTD->BG.G(),pTD->BG.B(),1);
-				Roundrect(
+				pTD->textSize = 1;
+				bool bOverflown = false;
+				while(!bOverflown)
+				{
+					pTD->textSize++;
+					if(TextHeight(SerifTypeface, pTD->textSize) > row_height*.9f)
+						bOverflown = true;
+					for(int row = 0; row < pTD->nRows; row++)
+					{
+						for(int col = 0; col < pTD->nCols && !bOverflown; col++)
+						{
+							if(TextWidth(pTD->tallies[row][col].text.c_str(),SerifTypeface, pTD->textSize) > col_width*.9f)
+								bOverflown=true;
+						}
+					}
+				}
+				pTD->textSize--;
+				printf("Optimal Text Size: %d\n",pTD->textSize);
+			}
+			float textOffset = -TextHeight(SerifTypeface, pTD->textSize)*.33f;
+			//float y_offset = height/10.0f;
+			for(int row = 0; row < pTD->nRows; row++)
+			{
+				float base_y = ((float)row)*row_height + height/20.0f;
+				for(int col = 0; col < pTD->nCols; col++)
+				{
+	#define curTally (pTD->tallies[row][col])
+					float base_x = ((float)col)*col_width + text_width/100.0f;
+					Fill(curTally.BG.R(),curTally.BG.G(),curTally.BG.B(),1);
+					Roundrect(base_x, base_y, col_width*.98f, row_height *.98f,row_height/10.0f, row_height/10.0f);
+					Fill(curTally.FG.R(),curTally.FG.G(),curTally.FG.B(), 1);
+					TextMid(base_x + col_width/2.0f, textOffset + base_y + row_height/2.0f, curTally.text.c_str(), SerifTypeface, pTD->textSize);
+				}
 			}
 		}
 #endif
 		Fill(255, 255, 255, 1);
-		Text(0,0, "Press Ctrl+C to quit", SerifTypeface, text_width / 150.0f);
+		{
+			char buf[8192];
+			buf[sizeof(buf)-1] = '\0';
+			snprintf(buf, sizeof(buf) -1, "Press Ctrl+C to quit. MAC Address %s", mac_address.c_str());
+			Text(0,0, buf, SerifTypeface, text_width / 125.0f);
+		}
 		const char * sync_text;
 		if(ntp_state_data.status == 0)
 		{
