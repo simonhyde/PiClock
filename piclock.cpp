@@ -323,6 +323,7 @@ int main() {
 	pthread_attr_init(&ntp_attr);
 	pthread_create(&ntp_thread, &ntp_attr, &ntp_check_thread, &ntp_state_data);
 #if GPI_MODE == 2
+	time_t tm_last_comms_good = 0;
 	create_tcp_threads();
 #endif
 	while(1)
@@ -388,8 +389,10 @@ int main() {
 			commsTextHeight = TextHeight(SerifTypeface, pointSize);
 			commsHeight = 3.2f*commsTextHeight;
 		}
+		bool bAnyComms = false;
 		for(int window = 0; window < 2; window++)
 		{
+			bAnyComms = bAnyComms || bComms[window];
 			if(bComms[window])
 				Fill(0,100,0,1);
 			else
@@ -406,6 +409,16 @@ int main() {
 			snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
 			TextMid(base_x, base_y + commsTextHeight*0.4f, buf, SerifTypeface, pointSize);
 		}
+		if(bAnyComms)
+		{
+			tm_last_comms_good = tval.tv_sec;
+		}
+		//Stop showing stuff after 5 seconds of comms failed...
+		else if(pTD->nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
+		{
+			pTallyDisplays = pTD = boost::shared_ptr<TallyDisplays>(new TallyDisplays());
+		}
+			
 		profName = pTD->sProfName;
 		if(pTD->nRows > 0 && pTD->nCols > 0)
 		{
