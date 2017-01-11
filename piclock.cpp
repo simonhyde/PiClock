@@ -114,9 +114,10 @@ public:
 	int nRows;
 	int nCols;
 	int textSize;
+	std::string sProfName;
 	std::map<int,std::map<int,TallyState> > tallies;
 	TallyDisplays()
-	 :nRows(0), nCols(0), textSize(-1)
+	 :nRows(0), nCols(0), textSize(-1), sProfName()
 	{
 	}
 };
@@ -190,9 +191,16 @@ int handle_tcp_message(const std::string &message, client & conn)
 		bChanged = !pTd->tallies[row][col].Equals(pOld->tallies[row][col]);
 		bSizeChanged = pTd->tallies[row][col].text != pOld->tallies[row][col].text;
 	}
+	else if(cmd == "SETPROFILE")
+	{
+		pTd->sProfName = get_arg(message, 1);
+		bChanged = pTd->sProfName != pOld->sProfName;
+	}
 	else
 	{
-		return 0;
+		//Unknwon command, just NACK
+		conn.write_line("NACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
+		return 1;
 	}
 	if(bChanged)
 	{
@@ -313,6 +321,7 @@ int main() {
 #endif
 	while(1)
 	{
+		std::string profName;
 #if GPI_MODE == 1
 		uint8_t gpis = pifacedigital_read_reg(INPUT,0);
 #endif
@@ -361,6 +370,7 @@ int main() {
 		TextMid(text_width /2.0f, height *3.5f/10.0f, "On Air", SerifTypeface, text_width/10.0f);
 #endif
 #if GPI_MODE == 2
+		profName = pTD->sProfName;
 		if(pTD->nRows > 0 && pTD->nCols > 0)
 		{
 			//Use 50% of height, 10% up the screen
@@ -404,13 +414,18 @@ int main() {
 			}
 		}
 #endif
-		Fill(255, 255, 255, 1);
+		Fill(127, 127, 127, 1);
+		Text(0, 0, "Press Ctrl+C to quit", SerifTypeface, text_width / 150.0f);
 		{
 			char buf[8192];
 			buf[sizeof(buf)-1] = '\0';
-			snprintf(buf, sizeof(buf) -1, "Press Ctrl+C to quit. MAC Address %s", mac_address.c_str());
-			Text(0,0, buf, SerifTypeface, text_width / 125.0f);
+			if(profName.empty())
+				snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
+			else
+				snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
+			Text(0, TextHeight(SerifTypeface,text_width/150.0f)*1.5f, buf, SerifTypeface, text_width / 100.0f);
 		}
+		Fill(255,255,255,1);
 		const char * sync_text;
 		if(ntp_state_data.status == 0)
 		{
