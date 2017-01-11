@@ -41,6 +41,7 @@
 
 std::string mac_address;
 int bRunning = 1;
+bool bComms[2];
 
 
 void * ntp_check_thread(void * arg)
@@ -212,13 +213,14 @@ int handle_tcp_message(const std::string &message, client & conn)
 	return 1;
 }
 
-void tcp_thread(const char *remote_host)
+void tcp_thread(const char *remote_host, bool * pbComms)
 {
 	int retryDelay = 0;
 	while(bRunning)
 	{
 		try
 		{
+			*pbComms = false;
 			client conn;
 			//Allow 30 seconds for connection
 			conn.connect(remote_host, TCP_SERVICE,
@@ -232,6 +234,7 @@ void tcp_thread(const char *remote_host)
 				if(!handle_tcp_message(data, conn))
 					break;
 				retryDelay = 0;
+				*pbComms = true;
 			}
 		}
 		catch(...)
@@ -265,8 +268,8 @@ void create_tcp_threads()
 	{
 		mac_address = "UNKNOWN";
 	}
-	std::thread t1(tcp_thread, TCP_REMOTE_HOST1);
-	std::thread t2(tcp_thread, TCP_REMOTE_HOST2);
+	std::thread t1(tcp_thread, TCP_REMOTE_HOST1, &(bComms[0]));
+	std::thread t2(tcp_thread, TCP_REMOTE_HOST2, &(bComms[1]));
 	t1.detach(); t2.detach();
 }
 
@@ -274,6 +277,9 @@ int main() {
 	int iwidth, iheight;
 	fd_set rfds;
 	struct timeval timeout;
+	VGfloat commsWidth = -1;
+	VGfloat commsHeight = -1;
+	VGfloat commsTextHeight = -1;
 	int i;
 	VGfloat hours_x[12];
 	VGfloat hours_y[12];
@@ -370,12 +376,42 @@ int main() {
 		TextMid(text_width /2.0f, height *3.5f/10.0f, "On Air", SerifTypeface, text_width/10.0f);
 #endif
 #if GPI_MODE == 2
+		//Draw comms status
+		int pointSize = height/100.0f;
+		if(commsWidth < 0)
+		{
+			commsWidth = 1.2f*std::max(
+				std::max(TextWidth("Comms OK", SerifTypeface, pointSize),
+				         TextWidth("Comms Failed", SerifTypeface, pointSize)),
+				std::max(TextWidth("Tally Server 1", SerifTypeface, pointSize),
+				         TextWidth("Tally Server 2", SerifTypeface, pointSize)));
+			commsTextHeight = TextHeight(SerifTypeface, pointSize);
+			commsHeight = 3.2f*commsTextHeight;
+		}
+		for(int window = 0; window < 2; window++)
+		{
+			if(bComms[window])
+				Fill(0,100,0,1);
+			else
+				Fill(190,0,0,1);
+			VGfloat base_x = text_width - commsWidth * (VGfloat)(2-window);
+			VGfloat base_y = 0;
+			Rect( base_x, base_y, commsWidth, commsHeight);
+			Fill(200,200,200,1);
+			char buf[512];
+			buf[511] = '\0';
+			base_x += commsWidth*.5f;
+			snprintf(buf, 511, "Tally Server %d", window + 1);
+			TextMid(base_x, base_y + commsTextHeight*1.8f, buf, SerifTypeface, pointSize);
+			snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
+			TextMid(base_x, base_y + commsTextHeight*0.4f, buf, SerifTypeface, pointSize);
+		}
 		profName = pTD->sProfName;
 		if(pTD->nRows > 0 && pTD->nCols > 0)
 		{
 			//Use 50% of height, 10% up the screen
-			float row_height = height/(2.0f*(float)pTD->nRows);
-			float col_width = text_width/((float)pTD->nCols);
+			VGfloat row_height = height/(2.0f*(VGfloat)pTD->nRows);
+			VGfloat col_width = text_width/((VGfloat)pTD->nCols);
 			if(pTD->textSize < 0)
 			{
 				pTD->textSize = 1;
@@ -397,15 +433,15 @@ int main() {
 				pTD->textSize--;
 				printf("Optimal Text Size: %d\n",pTD->textSize);
 			}
-			float textOffset = -TextHeight(SerifTypeface, pTD->textSize)*.33f;
+			VGfloat textOffset = -TextHeight(SerifTypeface, pTD->textSize)*.33f;
 			//float y_offset = height/10.0f;
 			for(int row = 0; row < pTD->nRows; row++)
 			{
-				float base_y = ((float)row)*row_height + height/20.0f;
+				VGfloat base_y = ((VGfloat)row)*row_height + std::max(commsHeight*1.1f, height/20.0f);
 				for(int col = 0; col < pTD->nCols; col++)
 				{
 	#define curTally (pTD->tallies[row][col])
-					float base_x = ((float)col)*col_width + text_width/100.0f;
+					VGfloat base_x = ((VGfloat)col)*col_width + text_width/100.0f;
 					Fill(curTally.BG.R(),curTally.BG.G(),curTally.BG.B(),1);
 					Roundrect(base_x, base_y, col_width*.98f, row_height *.98f,row_height/10.0f, row_height/10.0f);
 					Fill(curTally.FG.R(),curTally.FG.G(),curTally.FG.B(), 1);
@@ -491,9 +527,11 @@ int main() {
 		StrokeWidth(clock_width/200.0f);
 		//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
 		VGfloat sec_rotation = -(6.0f * tm_now.tm_sec);
+		VGfloat sec_part = sec_rotation;
 		if(tval.tv_usec > MOVE_HAND_AT)
 			sec_rotation -= ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
-		VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_rotation/60.0f;
+		sec_part -= ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
+		VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
 		VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
 		Rotate(hour_rotation);
 		Line(0,0,0,height/4.0f); /* half-length hour hand */
