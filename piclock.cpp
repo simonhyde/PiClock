@@ -230,10 +230,14 @@ void tcp_thread(const std::string remote_host, bool * pbComms)
 				std::string data = conn.read_line(
 				boost::posix_time::time_duration(0,0,5,0),'\r');
 
-				if(!handle_tcp_message(data, conn))
+				int ret = handle_tcp_message(data, conn);
+				if(ret == 0)
 					break;
-				retryDelay = 0;
-				*pbComms = true;
+				if(ret != 3) //Login attempt might not be good
+				{
+					retryDelay = 0;
+					*pbComms = true;
+				}
 			}
 		}
 		catch(...)
