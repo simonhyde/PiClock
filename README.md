@@ -21,7 +21,7 @@ Build
 1. First you'll need to install some dependencies (ntpdate is only suggested for runtime):
 
 	```shell
-	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu
+	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu libboost-program-options-dev libboost-system-dev libssl-dev
 	```
 
 2. Compile:
