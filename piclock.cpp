@@ -3,6 +3,7 @@
 #include <thread>
 #include <mutex>
 #include <string>
+#include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -10,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <boost/shared_ptr.hpp>
+#include <boost/program_options.hpp>
 #include <netdb.h>
 #include <time.h>
 #include <math.h>
@@ -22,26 +24,23 @@
 #include "ntpstat/ntpstat.h"
 //Bit of a bodge, but generating a header file for this example would be a pain
 #include "blocking_tcp_client.cpp"
-//1 == piface digital
-//2 == TCP/IP interface (to BNCS)
-#define GPI_MODE	2
-#define TCP_REMOTE_HOST1	"10.68.178.15"
-#define TCP_REMOTE_HOST2	"10.68.178.15"
-#define TCP_SERVICE		"6254"
-#define TCP_SHARED_SECRET	"SharedSecretGoesHere"
-
-#if GPI_MODE == 1
+//piface digital
 #include "pifacedigital.h"
-#endif
 
 #define FPS 25
 #define FRAMES 0
 //Number of micro seconds into a second to start moving the second hand
 #define MOVE_HAND_AT	900000
 
+namespace po = boost::program_options;
+
 std::string mac_address;
 int bRunning = 1;
-bool bComms[2];
+std::map<unsigned int,bool> bComms;
+int GPI_MODE = 0;
+std::string TALLY_SERVICE("6254");
+std::string TALLY_SECRET("SharedSecretGoesHere");
+std::vector<std::string> tally_hosts;
 
 
 void * ntp_check_thread(void * arg)
@@ -159,7 +158,7 @@ int handle_tcp_message(const std::string &message, client & conn)
 	if(cmd == "CRYPT")
 	{
 		uint8_t sha_buf[SHA512_DIGEST_LENGTH];
-		std::string to_digest = get_arg(message,1,false) + TCP_SHARED_SECRET;
+		std::string to_digest = get_arg(message,1,false) + TALLY_SECRET;
 		SHA512((const uint8_t *)to_digest.c_str(), to_digest.length(),
 			sha_buf);
 		char out_buf[SHA512_DIGEST_LENGTH*2 + 1];
@@ -213,7 +212,7 @@ int handle_tcp_message(const std::string &message, client & conn)
 	return 1;
 }
 
-void tcp_thread(const char *remote_host, bool * pbComms)
+void tcp_thread(const std::string remote_host, bool * pbComms)
 {
 	int retryDelay = 0;
 	while(bRunning)
@@ -223,7 +222,7 @@ void tcp_thread(const char *remote_host, bool * pbComms)
 			*pbComms = false;
 			client conn;
 			//Allow 30 seconds for connection
-			conn.connect(remote_host, TCP_SERVICE,
+			conn.connect(remote_host, TALLY_SERVICE,
 				boost::posix_time::time_duration(0,0,30,0));
 			while(bRunning)
 			{
@@ -268,12 +267,33 @@ void create_tcp_threads()
 	{
 		mac_address = "UNKNOWN";
 	}
-	std::thread t1(tcp_thread, TCP_REMOTE_HOST1, &(bComms[0]));
-	std::thread t2(tcp_thread, TCP_REMOTE_HOST2, &(bComms[1]));
-	t1.detach(); t2.detach();
+	for(unsigned int i = 0; i < tally_hosts.size(); i++)
+	{
+		std::thread t(tcp_thread, tally_hosts[i], &(bComms[i]));
+		t.detach();
+	}
 }
 
-int main() {
+void read_settings(const std::string & filename,
+		   po::variables_map& vm)
+{
+	po::options_description desc("Options");
+	desc.add_options()
+		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=PiFace Digital, 2=TCP/IP")
+		("tally_remote_host", po::value<std::vector<std::string>>(&tally_hosts), "Remote tally host, may be specified multiple times for multiple connections")
+		("tally_remote_port", po::value<std::string>(&TALLY_SERVICE)->default_value("6254"), "Port (or service) to connect to on (default 6254)")
+		("tally_shared_secret", po::value<std::string>(&TALLY_SECRET)->default_value("SharedSecretGoesHere"), "Shared Secret (password) for connecting to tally service")
+	;
+	
+	std::ifstream settings_file(filename.c_str());
+	
+	vm = po::variables_map();
+
+	po::store(po::parse_config_file(settings_file, desc), vm);
+	po::notify(vm);
+}
+
+int main(int argc, char *argv[]) {
 	int iwidth, iheight;
 	fd_set rfds;
 	struct timeval timeout;
@@ -281,12 +301,15 @@ int main() {
 	VGfloat commsHeight = -1;
 	VGfloat commsTextHeight = -1;
 	int i;
+	time_t tm_last_comms_good = 0;
 	VGfloat hours_x[12];
 	VGfloat hours_y[12];
 	timeout.tv_usec = timeout.tv_sec = 0;
-#if GPI_MODE == 1
-	pifacedigital_open(0);
-#endif
+	std::string configFile = "piclock.cfg";
+	if(argc > 1)
+		configFile = argv[1];
+	po::variables_map vm;
+	read_settings(configFile, vm);
 	FD_ZERO(&rfds);
 	FD_SET(fileno(stdin),&rfds);
 	
@@ -322,19 +345,13 @@ int main() {
 	pthread_attr_t ntp_attr;
 	pthread_attr_init(&ntp_attr);
 	pthread_create(&ntp_thread, &ntp_attr, &ntp_check_thread, &ntp_state_data);
-#if GPI_MODE == 2
-	time_t tm_last_comms_good = 0;
-	create_tcp_threads();
-#endif
+	if(GPI_MODE == 1)
+		pifacedigital_open(0);
+	else if(GPI_MODE == 2)
+		create_tcp_threads();
 	while(1)
 	{
 		std::string profName;
-#if GPI_MODE == 1
-		uint8_t gpis = pifacedigital_read_reg(INPUT,0);
-#endif
-#if GPI_MODE == 2
-		boost::shared_ptr<TallyDisplays> pTD = pTallyDisplays;
-#endif
 		int i;
 		char buf[256];
 		gettimeofday(&tval, NULL);
@@ -362,109 +379,122 @@ int main() {
 		TextMid(text_width / 2.0f, height * 7.0f/10.0f, buf, SerifTypeface, text_width/15.0f);
 		strftime(buf, sizeof(buf), "%d %b %Y", &tm_now);
 		TextMid(text_width / 2.0f, height * 6.0f/10.0f, buf, SerifTypeface, text_width/15.0f);
-#if GPI_MODE == 1
-		uint8_t colour_weight = (gpis & 1) ? 100:255;
-		Fill(colour_weight,colour_weight*0.55,0,1);
-		Roundrect(text_width/100.0f,height*0.5/10.0f,text_width *.98f,height*2.0f/10.0f,width/100.0f, height/100.0f);
-		uint8_t fill_weight = (gpis & 1)? 100:255;
-		Fill(fill_weight,fill_weight,fill_weight, 1);
-		TextMid(text_width /2.0f, height *1.0f/10.0f, "Mic Live", SerifTypeface, text_width/10.0f);
-		colour_weight = (gpis & 2) ? 100:255;
-		Fill(colour_weight,0,0,1);
-		Roundrect(text_width/100.0f,height*3.0/10.0f,text_width *.98f,height*2.0f/10.0f,width/100.0f, height/100.0f);
-		fill_weight = (gpis & 2)? 100:255;
-		Fill(fill_weight,fill_weight,fill_weight, 1);
-		TextMid(text_width /2.0f, height *3.5f/10.0f, "On Air", SerifTypeface, text_width/10.0f);
-#endif
-#if GPI_MODE == 2
-		//Draw comms status
-		int pointSize = height/100.0f;
-		if(commsWidth < 0)
+		if(GPI_MODE == 1)
 		{
-			commsWidth = 1.2f*std::max(
-				std::max(TextWidth("Comms OK", SerifTypeface, pointSize),
-				         TextWidth("Comms Failed", SerifTypeface, pointSize)),
-				std::max(TextWidth("Tally Server 1", SerifTypeface, pointSize),
-				         TextWidth("Tally Server 2", SerifTypeface, pointSize)));
-			commsTextHeight = TextHeight(SerifTypeface, pointSize);
-			commsHeight = 3.2f*commsTextHeight;
+			uint8_t gpis = pifacedigital_read_reg(INPUT,0);
+			uint8_t colour_weight = (gpis & 1) ? 100:255;
+			Fill(colour_weight,colour_weight*0.55,0,1);
+			Roundrect(text_width/100.0f,height*0.5/10.0f,text_width *.98f,height*2.0f/10.0f,width/100.0f, height/100.0f);
+			uint8_t fill_weight = (gpis & 1)? 100:255;
+			Fill(fill_weight,fill_weight,fill_weight, 1);
+			TextMid(text_width /2.0f, height *1.0f/10.0f, "Mic Live", SerifTypeface, text_width/10.0f);
+			colour_weight = (gpis & 2) ? 100:255;
+			Fill(colour_weight,0,0,1);
+			Roundrect(text_width/100.0f,height*3.0/10.0f,text_width *.98f,height*2.0f/10.0f,width/100.0f, height/100.0f);
+			fill_weight = (gpis & 2)? 100:255;
+			Fill(fill_weight,fill_weight,fill_weight, 1);
+			TextMid(text_width /2.0f, height *3.5f/10.0f, "On Air", SerifTypeface, text_width/10.0f);
 		}
-		bool bAnyComms = false;
-		for(int window = 0; window < 2; window++)
+		else if(GPI_MODE == 2)
 		{
-			bAnyComms = bAnyComms || bComms[window];
-			if(bComms[window])
-				Fill(0,100,0,1);
-			else
-				Fill(190,0,0,1);
-			VGfloat base_x = text_width - commsWidth * (VGfloat)(2-window);
-			VGfloat base_y = 0;
-			Rect( base_x, base_y, commsWidth, commsHeight);
-			Fill(200,200,200,1);
-			char buf[512];
-			buf[511] = '\0';
-			base_x += commsWidth*.5f;
-			snprintf(buf, 511, "Tally Server %d", window + 1);
-			TextMid(base_x, base_y + commsTextHeight*1.8f, buf, SerifTypeface, pointSize);
-			snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
-			TextMid(base_x, base_y + commsTextHeight*0.4f, buf, SerifTypeface, pointSize);
-		}
-		if(bAnyComms)
-		{
-			tm_last_comms_good = tval.tv_sec;
-		}
-		//Stop showing stuff after 5 seconds of comms failed...
-		else if(pTD->nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
-		{
-			pTallyDisplays = pTD = boost::shared_ptr<TallyDisplays>(new TallyDisplays());
-		}
-			
-		profName = pTD->sProfName;
-		if(pTD->nRows > 0 && pTD->nCols > 0)
-		{
-			//Use 50% of height, 10% up the screen
-			VGfloat row_height = height/(2.0f*(VGfloat)pTD->nRows);
-			VGfloat col_width = text_width/((VGfloat)pTD->nCols);
-			if(pTD->textSize < 0)
+			//Copy (reference to) current state, so it won't change whilst we're processing it...
+			boost::shared_ptr<TallyDisplays> pTD = pTallyDisplays;
+			//Draw comms status
+			int pointSize = height/100.0f;
+			if(commsWidth < 0)
 			{
-				pTD->textSize = 1;
-				bool bOverflown = false;
-				while(!bOverflown)
+				commsWidth =
+					std::max(TextWidth("Comms OK", SerifTypeface, pointSize),
+						 TextWidth("Comms Failed", SerifTypeface, pointSize));
+				for(unsigned int window = 0; window < tally_hosts.size(); window++)
 				{
-					pTD->textSize++;
-					if(TextHeight(SerifTypeface, pTD->textSize) > row_height*.9f)
-						bOverflown = true;
-					for(int row = 0; row < pTD->nRows; row++)
+					char buf[512];
+					buf[511] = '\0';
+					snprintf(buf, 511, "Tally Server %d", window + 1);
+					commsWidth = std::max(commsWidth, TextWidth(buf, SerifTypeface, pointSize));
+				}
+				commsWidth *= 1.2f;
+				commsTextHeight = TextHeight(SerifTypeface, pointSize);
+				commsHeight = 3.2f*commsTextHeight;
+			}
+			bool bAnyComms = false;
+			for(unsigned int window = 0; window < tally_hosts.size(); window++)
+			{
+				bAnyComms = bAnyComms || bComms[window];
+				if(bComms[window])
+					Fill(0,100,0,1);
+				else
+					Fill(190,0,0,1);
+				VGfloat base_x = text_width - commsWidth * (VGfloat)(tally_hosts.size()-window);
+				VGfloat base_y = 0;
+				Rect( base_x, base_y, commsWidth, commsHeight);
+				Fill(200,200,200,1);
+				char buf[512];
+				buf[511] = '\0';
+				base_x += commsWidth*.5f;
+				snprintf(buf, 511, "Tally Server %d", window + 1);
+				TextMid(base_x, base_y + commsTextHeight*1.8f, buf, SerifTypeface, pointSize);
+				snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
+				TextMid(base_x, base_y + commsTextHeight*0.4f, buf, SerifTypeface, pointSize);
+			}
+			if(bAnyComms)
+			{
+				tm_last_comms_good = tval.tv_sec;
+			}
+			//Stop showing stuff after 5 seconds of comms failed...
+			else if(pTD->nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
+			{
+				pTallyDisplays = pTD = boost::shared_ptr<TallyDisplays>(new TallyDisplays());
+			}
+				
+			profName = pTD->sProfName;
+			if(pTD->nRows > 0 && pTD->nCols > 0)
+			{
+				//Use 50% of height, 10% up the screen
+				VGfloat row_height = height/(2.0f*(VGfloat)pTD->nRows);
+				VGfloat col_width = text_width/((VGfloat)pTD->nCols);
+				if(pTD->textSize < 0)
+				{
+					pTD->textSize = 1;
+					bool bOverflown = false;
+					while(!bOverflown)
 					{
-						for(int col = 0; col < pTD->nCols && !bOverflown; col++)
+						pTD->textSize++;
+						if(TextHeight(SerifTypeface, pTD->textSize) > row_height*.9f)
+							bOverflown = true;
+						for(int row = 0; row < pTD->nRows; row++)
 						{
-							if(TextWidth(pTD->tallies[row][col].text.c_str(),SerifTypeface, pTD->textSize) > col_width*.9f)
-								bOverflown=true;
+							for(int col = 0; col < pTD->nCols && !bOverflown; col++)
+							{
+								if(TextWidth(pTD->tallies[row][col].text.c_str(),SerifTypeface, pTD->textSize) > col_width*.9f)
+									bOverflown=true;
+							}
 						}
 					}
+					pTD->textSize--;
+					printf("Optimal Text Size: %d\n",pTD->textSize);
 				}
-				pTD->textSize--;
-				printf("Optimal Text Size: %d\n",pTD->textSize);
-			}
-			VGfloat textOffset = -TextHeight(SerifTypeface, pTD->textSize)*.33f;
-			//float y_offset = height/10.0f;
-			for(int row = 0; row < pTD->nRows; row++)
-			{
-				VGfloat base_y = ((VGfloat)row)*row_height + std::max(commsHeight*1.1f, height/20.0f);
-				for(int col = 0; col < pTD->nCols; col++)
+				VGfloat textOffset = -TextHeight(SerifTypeface, pTD->textSize)*.33f;
+				//float y_offset = height/10.0f;
+				for(int row = 0; row < pTD->nRows; row++)
 				{
-	#define curTally (pTD->tallies[row][col])
-					VGfloat base_x = ((VGfloat)col)*col_width + text_width/100.0f;
-					Fill(curTally.BG.R(),curTally.BG.G(),curTally.BG.B(),1);
-					Roundrect(base_x, base_y, col_width*.98f, row_height *.98f,row_height/10.0f, row_height/10.0f);
-					Fill(curTally.FG.R(),curTally.FG.G(),curTally.FG.B(), 1);
-					TextMid(base_x + col_width/2.0f, textOffset + base_y + row_height/2.0f, curTally.text.c_str(), SerifTypeface, pTD->textSize);
+					VGfloat base_y = ((VGfloat)row)*row_height + std::max(commsHeight*1.1f, height/20.0f);
+					for(int col = 0; col < pTD->nCols; col++)
+					{
+#define curTally (pTD->tallies[row][col])
+						VGfloat base_x = ((VGfloat)col)*col_width + text_width/100.0f;
+						Fill(curTally.BG.R(),curTally.BG.G(),curTally.BG.B(),1);
+						Roundrect(base_x, base_y, col_width*.98f, row_height *.98f,row_height/10.0f, row_height/10.0f);
+						Fill(curTally.FG.R(),curTally.FG.G(),curTally.FG.B(), 1);
+						TextMid(base_x + col_width/2.0f, textOffset + base_y + row_height/2.0f, curTally.text.c_str(), SerifTypeface, pTD->textSize);
+					}
 				}
 			}
 		}
-#endif
+		//Done with tallies, back to common code...
 		Fill(127, 127, 127, 1);
 		Text(0, 0, "Press Ctrl+C to quit", SerifTypeface, text_width / 150.0f);
+		if(GPI_MODE == 2)
 		{
 			char buf[8192];
 			buf[sizeof(buf)-1] = '\0';
