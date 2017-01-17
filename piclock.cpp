@@ -610,7 +610,10 @@ int main(int argc, char *argv[]) {
 		Line(0,0,0,height/2.0f); /* minute hand */
 		Rotate(sec_rotation - min_rotation);
 		Stroke(255,0,0,1);
-		Line(0,0,0,height/2.0f); /* second hand */
+		Line(0,-height/10.0f,0,height/2.0f); /* second hand, with overhanging tail */
+		//Draw circle in centre
+		Fill(255,0,0,1);
+		Circle(0,0,clock_width/150.0f);
 		Rotate(-sec_rotation);
 		//Now draw some dots for seconds...
 #ifdef SECOND_DOTS
