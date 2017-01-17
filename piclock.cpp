@@ -304,12 +304,16 @@ int main(int argc, char *argv[]) {
 	VGfloat commsWidth = -1;
 	VGfloat commsHeight = -1;
 	VGfloat commsTextHeight = -1;
+	VGfloat timeHeights[2] = {-1.0f,-1.0f};
+	VGfloat tallyHeight = -1.0f;
 	int i;
 	time_t tm_last_comms_good = 0;
 	VGfloat hours_x[12];
 	VGfloat hours_y[12];
 	timeout.tv_usec = timeout.tv_sec = 0;
 	std::string configFile = "piclock.cfg";
+	std::string last_date_string;
+	int dateSize = -1;
 	if(argc > 1)
 		configFile = argv[1];
 	po::variables_map vm;
@@ -323,7 +327,7 @@ int main(int argc, char *argv[]) {
 	struct timeval tval;
 	struct tm tm_now;
 
-	VGfloat offset = iheight*.1f;
+	VGfloat offset = iheight*.05f;
 	VGfloat width = iwidth - offset;
 	VGfloat height = iheight - offset;
 
@@ -372,17 +376,36 @@ int main(int argc, char *argv[]) {
 		}
 		//Write out the text
 		Translate(h_offset_pos, v_offset_pos);
+		if(timeHeights[0] < 0)
+		{
+#if FRAMES
+			timeHeights[0] = TextHeight(MonoTypeface,text_width/10.0f);
+#else
+			timeHeights[0] = TextHeight(MonoTypeface,text_width/7.0f);
+#endif
+		}
 #if FRAMES
 		sprintf(buf,"%02d:%02d:%02d:%02ld",tm_now.tm_hour,tm_now.tm_min,tm_now.tm_sec,tval.tv_usec *FPS/1000000);
-		TextMid(text_width / 2.0f, height * 8.0f/ 10.0f, buf, MonoTypeface, text_width / 10.0f);	// Timecode
+		TextMid(text_width / 2.0f, height -timeHeights[0] *.9f, buf, MonoTypeface, text_width / 10.0f);	// Timecode
 #else
 		sprintf(buf,"%02d:%02d:%02d",tm_now.tm_hour,tm_now.tm_min,tm_now.tm_sec);
-		TextMid(text_width / 2.0f, height * 8.0f/ 10.0f, buf, MonoTypeface, text_width / 7.0f);	// Timecode
+		TextMid(text_width / 2.0f, height -timeHeights[0] *.9f, buf, MonoTypeface, text_width / 7.0f);	// Timecode
 #endif
-		strftime(buf, sizeof(buf), "%A", &tm_now);
-		TextMid(text_width / 2.0f, height * 7.0f/10.0f, buf, SerifTypeface, text_width/15.0f);
-		strftime(buf, sizeof(buf), "%d %b %Y", &tm_now);
-		TextMid(text_width / 2.0f, height * 6.0f/10.0f, buf, SerifTypeface, text_width/15.0f);
+		strftime(buf, sizeof(buf), "%a %d %b %Y", &tm_now);
+		if(buf != last_date_string)
+		{
+			dateSize = 0;
+			VGfloat font_width = 0;
+			while(font_width *1.1f < text_width)
+			{
+				font_width = TextWidth(buf,SerifTypeface, ++dateSize);
+			}
+			dateSize--;
+			last_date_string = buf;
+			timeHeights[1] = TextHeight(SerifTypeface, dateSize) *1.1f;
+			tallyHeight = height - timeHeights[0]*1.2f - timeHeights[1];
+		}
+		TextMid(text_width / 2.0f, height -timeHeights[0] - timeHeights[1], buf, SerifTypeface, dateSize);
 		if(GPI_MODE == 1)
 		{
 			uint8_t gpis = pifacedigital_read_reg(INPUT,0);
@@ -455,7 +478,8 @@ int main(int argc, char *argv[]) {
 			if(pTD->nRows > 0 && pTD->nCols > 0)
 			{
 				//Use 50% of height, 10% up the screen
-				VGfloat row_height = height/(2.0f*(VGfloat)pTD->nRows);
+				VGfloat tallyBase = std::max(commsHeight*1.1f, height/20.0f);
+				VGfloat row_height = (tallyHeight - tallyBase)/((VGfloat)pTD->nRows);
 				VGfloat col_width = text_width/((VGfloat)pTD->nCols);
 				if(pTD->textSize < 0)
 				{
@@ -482,7 +506,7 @@ int main(int argc, char *argv[]) {
 				//float y_offset = height/10.0f;
 				for(int row = 0; row < pTD->nRows; row++)
 				{
-					VGfloat base_y = ((VGfloat)row)*row_height + std::max(commsHeight*1.1f, height/20.0f);
+					VGfloat base_y = ((VGfloat)row)*row_height + tallyBase;
 					for(int col = 0; col < pTD->nCols; col++)
 					{
 #define curTally (pTD->tallies[row][col])
