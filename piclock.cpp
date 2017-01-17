@@ -586,7 +586,9 @@ int main(int argc, char *argv[]) {
 				{
 					//Example to fade over 2 seconds...
 					//VGfloat fade = 128.0f * tm_now.tm_sec +  127.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
-					VGfloat fade = 255.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
+					VGfloat fade = 255.0f * ((VGfloat)tval.tv_usec)/200000.0f;
+					if(fade > 255.0f)
+						fade = 255.0f;
 					Stroke(255, fade, fade, 1);
 				}
 				else
@@ -594,6 +596,7 @@ int main(int argc, char *argv[]) {
 			}
 #endif
 		}
+		Stroke(255,255,255,1);
 		//Again, rotate co-ordinate space so we're just drawing an upright line every time...
 		StrokeWidth(clock_width/200.0f);
 		//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
@@ -601,6 +604,7 @@ int main(int argc, char *argv[]) {
 		VGfloat sec_part = sec_rotation;
 		if(tval.tv_usec > MOVE_HAND_AT)
 			sec_rotation -= ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
+		//Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
 		sec_part -= ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
 		VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
 		VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
