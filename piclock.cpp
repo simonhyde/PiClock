@@ -112,12 +112,13 @@ class TallyDisplays
 {
 public:
 	int nRows;
-	int nCols;
+	int nCols_default;
 	int textSize;
+	std::map<int,int> nCols;
 	std::string sProfName;
 	std::map<int,std::map<int,TallyState> > tallies;
 	TallyDisplays()
-	 :nRows(0), nCols(0), textSize(-1), sProfName()
+	 :nRows(0), nCols_default(0), textSize(-1), sProfName()
 	{
 	}
 };
@@ -177,9 +178,16 @@ int handle_tcp_message(const std::string &message, client & conn)
 	if(cmd == "SETSIZE")
 	{
 		pTd->nRows = get_arg_int(message,1);
-		pTd->nCols = get_arg_int(message,2);
-		bChanged = pOld->nRows != pTd->nRows || pOld->nCols != pTd->nCols;
+		pTd->nCols_default = get_arg_int(message,2);
+		bChanged = pOld->nRows != pTd->nRows || pOld->nCols_default != pTd->nCols_default;
 		bSizeChanged = bChanged;
+	}
+	else if(cmd == "SETROW")
+	{
+		int row = get_arg_int(message,1);
+		int col_count = get_arg_int(message,2);
+		pTd->nCols[row] = col_count;
+		bChanged = pOld->nCols[row] != col_count;
 	}
 	else if(cmd == "SETTALLY")
 	{
@@ -475,12 +483,13 @@ int main(int argc, char *argv[]) {
 			}
 				
 			profName = pTD->sProfName;
-			if(pTD->nRows > 0 && pTD->nCols > 0)
+			if(pTD->nRows > 0)
 			{
 				//Use 50% of height, 10% up the screen
 				VGfloat tallyBase = std::max(commsHeight*1.1f, height/20.0f);
 				VGfloat row_height = (tallyHeight - tallyBase)/((VGfloat)pTD->nRows);
-				VGfloat col_width = text_width/((VGfloat)pTD->nCols);
+				VGfloat buffer = row_height*.02f;
+				VGfloat col_width_default = text_width/((VGfloat)pTD->nCols_default);
 				if(pTD->textSize < 0)
 				{
 					pTD->textSize = 1;
@@ -492,7 +501,13 @@ int main(int argc, char *argv[]) {
 							bOverflown = true;
 						for(int row = 0; row < pTD->nRows; row++)
 						{
-							for(int col = 0; col < pTD->nCols && !bOverflown; col++)
+							int col_count = pTD->nCols[row];
+							VGfloat col_width = col_width_default;
+							if(col_count <= 0)
+								col_count = pTD->nCols_default;
+							else
+								col_width = text_width/((VGfloat)col_count);
+							for(int col = 0; col < col_count && !bOverflown; col++)
 							{
 								if(TextWidth(pTD->tallies[row][col].text.c_str(),SerifTypeface, pTD->textSize) > col_width*.9f)
 									bOverflown=true;
@@ -507,14 +522,20 @@ int main(int argc, char *argv[]) {
 				for(int row = 0; row < pTD->nRows; row++)
 				{
 					VGfloat base_y = ((VGfloat)row)*row_height + tallyBase;
-					for(int col = 0; col < pTD->nCols; col++)
+					int col_count = pTD->nCols[row];
+					VGfloat col_width = col_width_default;
+					if(col_count <= 0)
+						col_count = pTD->nCols_default;
+					else
+						col_width = text_width/((VGfloat)col_count);
+					for(int col = 0; col < col_count; col++)
 					{
 #define curTally (pTD->tallies[row][col])
 						VGfloat base_x = ((VGfloat)col)*col_width + text_width/100.0f;
 						Fill(curTally.BG.R(),curTally.BG.G(),curTally.BG.B(),1);
-						Roundrect(base_x, base_y, col_width*.98f, row_height *.98f,row_height/10.0f, row_height/10.0f);
+						Roundrect(base_x, base_y, col_width - buffer, row_height - buffer,row_height/10.0f, row_height/10.0f);
 						Fill(curTally.FG.R(),curTally.FG.G(),curTally.FG.B(), 1);
-						TextMid(base_x + col_width/2.0f, textOffset + base_y + row_height/2.0f, curTally.text.c_str(), SerifTypeface, pTD->textSize);
+						TextMid(base_x + (col_width - buffer)/2.0f, textOffset + base_y + row_height/2.0f, curTally.text.c_str(), SerifTypeface, pTD->textSize);
 					}
 				}
 			}
