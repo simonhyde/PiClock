@@ -86,26 +86,56 @@ protected:
 	uint32_t col;
 };
 
+
 class TallyState
 {
 public:
-	TallyColour FG;
-	TallyColour BG;
-	std::string text;
-	TallyState()
-	{}
-	TallyState(const std::string &fg, const std::string &bg, const std::string &_text)
-	 :FG(fg),BG(bg),text(_text)
-	{}
-	TallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text)
-	 :FG(fg),BG(bg),text(_text)
-	{}
-	bool Equals(const TallyState & other) const
+	virtual boost::shared_ptr<TallyColour> FG(const struct timeval &curTime) const = 0;
+	virtual boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const = 0;
+	virtual boost::shared_ptr<std::string> Text(const struct timeval &curTime) const = 0;
+	virtual bool IsMonoSpaced() const = 0;
+	virtual bool Equals(boost::shared_ptr<TallyState> other) const = 0;
+};
+
+class SimpleTallyState  :  public TallyState
+{
+public:
+	boost::shared_ptr<TallyColour> FG(const struct timeval &curTime) const override
 	{
-		return other.FG.Equals(FG)
-			&& other.BG.Equals(BG)
-			&& other.text == text;
+		return m_FG;
 	}
+	boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const override
+	{
+		return m_BG;
+	}
+	boost::shared_ptr<std::string> Text(const struct timeval &curTime) const override
+	{
+		return m_text;
+	}
+	bool IsMonoSpaced() const override
+	{
+		return false;
+	}
+
+	bool Equals(boost::shared_ptr<TallyState> other) const override
+	{
+		if(!other)
+			return false;
+		auto derived = dynamic_cast<SimpleTallyState *>(other.get());
+		return derived != NULL 
+			&& derived->m_FG->Equals(*m_FG)
+			&& derived->m_BG->Equals(*m_BG)
+			&& *(derived->m_text) == *m_text;
+	}
+	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text)
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	{}
+	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text)
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	{}
+protected:
+	boost::shared_ptr<TallyColour> m_FG, m_BG;
+	boost::shared_ptr<std::string> m_text;
 };
 
 class TallyDisplays
@@ -116,14 +146,44 @@ public:
 	int textSize;
 	std::map<int,int> nCols;
 	std::string sProfName;
-	std::map<int,std::map<int,TallyState> > tallies;
+	std::map<int,std::map<int,boost::shared_ptr<TallyState> > > displays;
 	TallyDisplays()
 	 :nRows(0), nCols_default(0), textSize(-1), sProfName()
 	{
 	}
 };
 
-boost::shared_ptr<TallyDisplays> pTallyDisplays(new TallyDisplays());
+class DisplayState
+{
+public:
+	TallyDisplays TD;
+	bool bAnalogueClockEnabled;
+	bool bAnalogueClockLocal;
+	bool bDigitalClockUTC;
+	bool bDigitalClockLocal;
+	bool bDate;
+	bool bLandscape;
+	DisplayState()
+	: bAnalogueClockEnabled(true),bAnalogueClockLocal(true),bDigitalClockUTC(false),bDigitalClockLocal(true),bDate(true), bLandscape(true)
+	{}
+
+	bool ClocksEqual(boost::shared_ptr<DisplayState> pOther) const
+	{
+		return pOther && ClocksEqual(*pOther);
+	}
+	bool ClocksEqual(const DisplayState & other) const
+	{
+		return  other.bAnalogueClockEnabled == bAnalogueClockEnabled &&
+			other.bAnalogueClockLocal   == bAnalogueClockLocal   &&
+			other.bDigitalClockUTC      == bDigitalClockUTC      &&
+			other.bDigitalClockLocal    == bDigitalClockLocal    &&
+			other.bDate                 == bDate                 &&
+			other.bLandscape            == bLandscape ;
+	}
+
+};
+
+boost::shared_ptr<DisplayState> pDisplayState(new DisplayState());
 
 std::string get_arg(const std::string & input, int index, bool bTerminated = true)
 {
@@ -148,6 +208,11 @@ int get_arg_int(const std::string &input, int index, bool bTerminated = true)
 	return std::stoi(get_arg(input, index));
 }
 
+bool get_arg_bool(const std::string &input, int index, bool bTerminated = true)
+{
+	return get_arg_int(input, index) != 0;
+}
+
 int handle_tcp_message(const std::string &message, client & conn)
 {
 	if(message == "PING")
@@ -170,39 +235,52 @@ int handle_tcp_message(const std::string &message, client & conn)
 		conn.write_line(to_write, boost::posix_time::time_duration(0,0,10),'\r');
 		return 3;
 	}
-	boost::shared_ptr<TallyDisplays> pOld = pTallyDisplays;
-	boost::shared_ptr<TallyDisplays> pTd(new TallyDisplays(*pOld));
+	boost::shared_ptr<DisplayState> pOld = pDisplayState;
+	boost::shared_ptr<DisplayState> pNew(new DisplayState(*pOld));
 	
 	bool bChanged = false;
 	bool bSizeChanged = false;
 	if(cmd == "SETSIZE")
 	{
-		pTd->nRows = get_arg_int(message,1);
-		pTd->nCols_default = get_arg_int(message,2);
-		bChanged = pOld->nRows != pTd->nRows || pOld->nCols_default != pTd->nCols_default;
+		pNew->TD.nRows = get_arg_int(message,1);
+		pNew->TD.nCols_default = get_arg_int(message,2);
+		bChanged = pOld->TD.nRows != pNew->TD.nRows || pOld->TD.nCols_default != pNew->TD.nCols_default;
 		bSizeChanged = bChanged;
 	}
 	else if(cmd == "SETROW")
 	{
 		int row = get_arg_int(message,1);
 		int col_count = get_arg_int(message,2);
-		pTd->nCols[row] = col_count;
-		bChanged = pOld->nCols[row] != col_count;
+		pNew->TD.nCols[row] = col_count;
+		bChanged = pOld->TD.nCols[row] != col_count;
 	}
 	else if(cmd == "SETTALLY")
 	{
 		int row = get_arg_int(message,1);
 		int col = get_arg_int(message,2);
-		pTd->tallies[row][col] = TallyState(get_arg(message,3),
+		pNew->TD.displays[row][col].reset(new SimpleTallyState(get_arg(message,3),
 						  get_arg(message,4),
-						  get_arg(message,5,false));
-		bChanged = !pTd->tallies[row][col].Equals(pOld->tallies[row][col]);
-		bSizeChanged = pTd->tallies[row][col].text != pOld->tallies[row][col].text;
+						  get_arg(message,5,false)));
+		bChanged = !pNew->TD.displays[row][col]->Equals(pOld->TD.displays[row][col]);
+		struct timeval tvTmp;
+		tvTmp.tv_sec = tvTmp.tv_usec = 0;
+		bSizeChanged = !(pOld->TD.displays[row][col])
+			      || pNew->TD.displays[row][col]->Text(tvTmp) != pOld->TD.displays[row][col]->Text(tvTmp)
+		              || pNew->TD.displays[row][col]->IsMonoSpaced() != pOld->TD.displays[row][col]->IsMonoSpaced();
 	}
 	else if(cmd == "SETPROFILE")
 	{
-		pTd->sProfName = get_arg(message, 1);
-		bChanged = pTd->sProfName != pOld->sProfName;
+		pNew->TD.sProfName = get_arg(message, 1);
+		bChanged = pNew->TD.sProfName != pOld->TD.sProfName;
+	}
+	else if(cmd == "SETCLOCKS")
+	{
+		pNew->bAnalogueClockEnabled = get_arg_bool(message,1);
+		pNew->bAnalogueClockLocal = get_arg_bool(message,2);
+		pNew->bDigitalClockUTC = get_arg_bool(message,3);
+		pNew->bDigitalClockLocal = get_arg_bool(message,4);
+		pNew->bDate = get_arg_bool(message,5);
+		bChanged = pNew->ClocksEqual(pOld);
 	}
 	else
 	{
@@ -213,8 +291,8 @@ int handle_tcp_message(const std::string &message, client & conn)
 	if(bChanged)
 	{
 		if(bSizeChanged)
-			pTd->textSize = -1;
-		pTallyDisplays = pTd;
+			pNew->TD.textSize = -1;
+		pDisplayState = pNew;
 	}
 	conn.write_line("ACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
 	return 1;
@@ -433,7 +511,7 @@ int main(int argc, char *argv[]) {
 		else if(GPI_MODE == 2)
 		{
 			//Copy (reference to) current state, so it won't change whilst we're processing it...
-			boost::shared_ptr<TallyDisplays> pTD = pTallyDisplays;
+			boost::shared_ptr<DisplayState> pDS = pDisplayState;
 			//Draw comms status
 			int pointSize = height/100.0f;
 			if(commsWidth < 0)
@@ -477,70 +555,76 @@ int main(int argc, char *argv[]) {
 				tm_last_comms_good = tval.tv_sec;
 			}
 			//Stop showing stuff after 5 seconds of comms failed...
-			else if(pTD->nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
+			else if(pDS->TD.nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
 			{
-				pTallyDisplays = pTD = boost::shared_ptr<TallyDisplays>(new TallyDisplays());
+				pDisplayState = pDS = boost::shared_ptr<DisplayState>(new DisplayState());
 			}
 				
-			profName = pTD->sProfName;
-			if(pTD->nRows > 0)
+			profName = pDS->TD.sProfName;
+			if(pDS->TD.nRows > 0)
 			{
 				//Use 50% of height, 10% up the screen
 				VGfloat tallyBase = std::max(commsHeight*1.1f, height/20.0f);
-				VGfloat row_height = (tallyHeight - tallyBase)/((VGfloat)pTD->nRows);
+				VGfloat row_height = (tallyHeight - tallyBase)/((VGfloat)pDS->TD.nRows);
 				VGfloat buffer = row_height*.02f;
-				VGfloat col_width_default = text_width/((VGfloat)pTD->nCols_default);
-				if(pTD->textSize < 0)
+				VGfloat col_width_default = text_width/((VGfloat)pDS->TD.nCols_default);
+				if(pDS->TD.textSize < 0)
 				{
-					pTD->textSize = 1;
+					pDS->TD.textSize = 1;
 					bool bOverflown = false;
-					while(!bOverflown)
+					bool bFoundAny = true;
+					while(!bOverflown && bFoundAny)
 					{
-						pTD->textSize++;
-						if(TextHeight(SerifTypeface, pTD->textSize) > row_height*.9f)
+						pDS->TD.textSize++;
+						if(TextHeight(SerifTypeface, pDS->TD.textSize) > row_height*.9f)
 							bOverflown = true;
-						for(int row = 0; row < pTD->nRows; row++)
+						bFoundAny = false;
+						for(int row = 0; row < pDS->TD.nRows; row++)
 						{
-							int col_count = pTD->nCols[row];
+							int col_count = pDS->TD.nCols[row];
 							VGfloat col_width = col_width_default;
 							if(col_count <= 0)
-								col_count = pTD->nCols_default;
+								col_count = pDS->TD.nCols_default;
 							else
 								col_width = text_width/((VGfloat)col_count);
 							for(int col = 0; col < col_count && !bOverflown; col++)
 							{
-								if(TextWidth(pTD->tallies[row][col].text.c_str(),SerifTypeface, pTD->textSize) > col_width*.9f)
+								auto item = pDS->TD.displays[row][col];
+								if(!item)
+									continue;
+								bFoundAny = true;
+								if(TextWidth(item->Text(tval)->c_str(),item->IsMonoSpaced() ? MonoTypeface : SerifTypeface, pDS->TD.textSize) > col_width*.9f)
 									bOverflown=true;
 							}
 						}
 					}
-					pTD->textSize--;
-					printf("Optimal Text Size: %d\n",pTD->textSize);
+					pDS->TD.textSize--;
+					printf("Optimal Text Size: %d\n",pDS->TD.textSize);
 				}
-				VGfloat textOffset = -TextHeight(SerifTypeface, pTD->textSize)*.33f;
+				VGfloat textOffset = -TextHeight(SerifTypeface, pDS->TD.textSize)*.33f;
 				//float y_offset = height/10.0f;
-				for(int row = 0; row < pTD->nRows; row++)
+				for(int row = 0; row < pDS->TD.nRows; row++)
 				{
 					VGfloat base_y = ((VGfloat)row)*row_height + tallyBase;
-					int col_count = pTD->nCols[row];
+					int col_count = pDS->TD.nCols[row];
 					VGfloat col_width = col_width_default;
 					if(col_count <= 0)
-						col_count = pTD->nCols_default;
+						col_count = pDS->TD.nCols_default;
 					else
 						col_width = text_width/((VGfloat)col_count);
 					for(int col = 0; col < col_count; col++)
 					{
-#define curTally (pTD->tallies[row][col])
+#define curTally (pDS->TD.displays[row][col])
 						VGfloat base_x = ((VGfloat)col)*col_width + text_width/100.0f;
-						Fill(curTally.BG.R(),curTally.BG.G(),curTally.BG.B(),1);
+						Fill(curTally->BG(tval)->R(),curTally->BG(tval)->G(),curTally->BG(tval)->B(),1);
 						Roundrect(base_x, base_y, col_width - buffer, row_height - buffer,row_height/10.0f, row_height/10.0f);
-						Fill(curTally.FG.R(),curTally.FG.G(),curTally.FG.B(), 1);
-						TextMid(base_x + (col_width - buffer)/2.0f, textOffset + base_y + row_height/2.0f, curTally.text.c_str(), SerifTypeface, pTD->textSize);
+						Fill(curTally->FG(tval)->R(),curTally->FG(tval)->G(),curTally->FG(tval)->B(), 1);
+						TextMid(base_x + (col_width - buffer)/2.0f, textOffset + base_y + row_height/2.0f, curTally->Text(tval)->c_str(), curTally->IsMonoSpaced()? MonoTypeface : SerifTypeface, pDS->TD.textSize);
 					}
 				}
 			}
 		}
-		//Done with tallies, back to common code...
+		//Done with displays, back to common code...
 		Fill(127, 127, 127, 1);
 		Text(0, 0, "Press Ctrl+C to quit", SerifTypeface, text_width / 150.0f);
 		if(GPI_MODE == 2)
