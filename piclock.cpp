@@ -42,6 +42,11 @@ std::string TALLY_SERVICE("6254");
 std::string TALLY_SECRET("SharedSecretGoesHere");
 std::vector<std::string> tally_hosts;
 
+#define FONT_PROP	(SerifTypeface)
+#define FONT_HOURS	(SansTypeface)
+#define FONT_MONO	(MonoTypeface)
+#define FONT(x)		((x)? FONT_MONO : FONT_PROP)
+
 
 void * ntp_check_thread(void * arg)
 {
@@ -73,6 +78,10 @@ public:
 		:col(std::stoul(input, NULL, 16))
 	{
 	}
+	TallyColour(uint8_t r, uint8_t g, uint8_t b)
+		:col( (r<<16) | (g<<8) | b )
+	{
+	}
 	TallyColour()
 		:col(0) //Default to black
 	{
@@ -80,6 +89,16 @@ public:
 	bool Equals(const TallyColour & other) const
 	{
 		return other.col == col;
+	}
+
+	void Fill()
+	{
+		::Fill(R(),G(),B(),1);
+	}
+
+	void Stroke()
+	{
+		::Stroke(R(),G(),B(),1);
 	}
 
 protected:
@@ -93,6 +112,7 @@ public:
 	virtual boost::shared_ptr<TallyColour> FG(const struct timeval &curTime) const = 0;
 	virtual boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const = 0;
 	virtual boost::shared_ptr<std::string> Text(const struct timeval &curTime) const = 0;
+	virtual boost::shared_ptr<std::string> Label(const struct timeval &curTime) const = 0;
 	virtual bool IsMonoSpaced() const = 0;
 	virtual bool Equals(boost::shared_ptr<TallyState> other) const = 0;
 };
@@ -112,6 +132,11 @@ public:
 	{
 		return m_text;
 	}
+	boost::shared_ptr<std::string> Label(const struct timeval &curTime) const override
+	{
+		//No label, empty pointer
+		return boost::shared_ptr<std::string>();
+	}
 	bool IsMonoSpaced() const override
 	{
 		return false;
@@ -121,12 +146,15 @@ public:
 	{
 		if(!other)
 			return false;
+		if(typeid(*other) != typeid(*this))
+			return false;
 		auto derived = dynamic_cast<SimpleTallyState *>(other.get());
 		return derived != NULL 
 			&& derived->m_FG->Equals(*m_FG)
 			&& derived->m_BG->Equals(*m_BG)
 			&& *(derived->m_text) == *m_text;
 	}
+
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text)
 	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
 	{}
@@ -137,6 +165,109 @@ protected:
 	boost::shared_ptr<TallyColour> m_FG, m_BG;
 	boost::shared_ptr<std::string> m_text;
 };
+
+class CountdownClock : public SimpleTallyState
+{
+public:
+	bool Invert(const struct timeval &curTime) const
+	{
+		if(m_pFlashLimit)
+		{
+			auto left = TimeLeft(curTime, m_target);
+			if((left.tv_sec <= *m_pFlashLimit)
+				&& (std::abs(left.tv_usec) < 500000))
+			return true;
+		}
+		return false;
+	}
+	boost::shared_ptr<TallyColour> FG(const struct timeval &curTime) const override
+	{
+		if(Invert(curTime))
+			return SimpleTallyState::BG(curTime);
+		return SimpleTallyState::FG(curTime);
+	}
+	boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const override
+	{
+		if(Invert(curTime))
+			return SimpleTallyState::FG(curTime);
+		return SimpleTallyState::BG(curTime);
+	}
+	boost::shared_ptr<std::string> Text(const struct timeval &curTime) const override
+	{
+		time_t secs = SecsLeft(curTime,m_target);
+		char buf[256];
+		char negChar = (secs < 0)? '-': ' ';
+		secs = std::abs(secs);
+		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld",
+			 negChar, secs/3600, (secs/60)%60, secs %60);
+		return boost::shared_ptr<std::string>(new std::string(buf));
+	}
+	boost::shared_ptr<std::string> Label(const struct timeval &curTime) const override
+	{
+		return SimpleTallyState::Text(curTime);
+	}
+	bool IsMonoSpaced() const override
+	{
+		return true;
+	}
+
+	bool Equals(boost::shared_ptr<TallyState> other) const override
+	{
+		if(!other)
+			return false;
+		if(typeid(*other) != typeid(*this))
+			return false;
+		auto derived = dynamic_cast<CountdownClock *>(other.get());
+		return derived != NULL 
+			&& derived->m_FG->Equals(*m_FG)
+			&& derived->m_BG->Equals(*m_BG)
+			&& derived->m_target.tv_sec == m_target.tv_sec
+			&& derived->m_target.tv_usec == m_target.tv_usec
+			&& *(derived->m_text) == *(m_text)
+			&& ((!m_pFlashLimit && !derived->m_pFlashLimit.get())
+			    || (m_pFlashLimit && derived->m_pFlashLimit
+			       && *m_pFlashLimit == *(derived->m_pFlashLimit)));
+	}
+
+	CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const struct timeval & _target, boost::shared_ptr<long long> pflash)
+	 :SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash)
+	{}
+	CountdownClock(const TallyColour & fg, const TallyColour &bg, const std::string &_label, const struct timeval &_target, boost::shared_ptr<long long> pflash)
+	 :SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash)
+	{}
+private:
+	struct timeval m_target;
+	boost::shared_ptr<long long> m_pFlashLimit;
+	static struct timeval TimeLeft(const timeval & current, const timeval & target)
+	{
+		struct timeval ret;
+		ret.tv_sec = target.tv_sec - current.tv_sec;
+		ret.tv_usec = target.tv_usec - current.tv_usec;
+		while(ret.tv_usec < 0 && ret.tv_sec > 0)
+		{
+			ret.tv_usec += 1000000;
+			ret.tv_sec -= 1;
+		}
+		while(ret.tv_usec > 0 && ret.tv_sec < 0)
+		{
+			ret.tv_usec -= 1000000;
+			ret.tv_sec += 1;
+		}
+		return ret;
+	}
+	static time_t SecsLeft(const timeval & current, const timeval & target)
+	{
+		auto left = TimeLeft(current,target);
+		//Round to nearest half second for now...
+		auto ret = left.tv_sec;
+		if(left.tv_usec >= 500000)
+			ret += 1;
+		else if(left.tv_usec <= -500000)
+			ret -= 1;
+		return ret;
+	}
+};
+
 
 class TallyDisplays
 {
@@ -153,37 +284,99 @@ public:
 	}
 };
 
-class DisplayState
+class DisplayBox
 {
 public:
-	TallyDisplays TD;
-	bool bAnalogueClockEnabled;
-	bool bAnalogueClockLocal;
-	bool bDigitalClockUTC;
-	bool bDigitalClockLocal;
-	bool bDate;
-	bool bLandscape;
-	DisplayState()
-	: bAnalogueClockEnabled(true),bAnalogueClockLocal(true),bDigitalClockUTC(false),bDigitalClockLocal(true),bDate(true), bLandscape(true)
+	VGfloat x,y,w,h;
+	DisplayBox()
+		:x(0),y(0),w(0),h(0)
 	{}
-
-	bool ClocksEqual(boost::shared_ptr<DisplayState> pOther) const
+	DisplayBox(VGfloat _x, VGfloat _y, VGfloat _w, VGfloat _h)
+		:x(_x),y(_y),w(_w),h(_h)
 	{
-		return pOther && ClocksEqual(*pOther);
 	}
-	bool ClocksEqual(const DisplayState & other) const
+	VGfloat mid_x()
 	{
-		return  other.bAnalogueClockEnabled == bAnalogueClockEnabled &&
-			other.bAnalogueClockLocal   == bAnalogueClockLocal   &&
-			other.bDigitalClockUTC      == bDigitalClockUTC      &&
-			other.bDigitalClockLocal    == bDigitalClockLocal    &&
-			other.bDate                 == bDate                 &&
-			other.bLandscape            == bLandscape ;
+		return x + w/2.0f;
 	}
-
+	VGfloat mid_y()
+	{
+		return y + h/2.0f;
+	}
+	void TextMid(const std::string & str, const Fontinfo & font, const int pointSize, boost::shared_ptr<std::string> label = boost::shared_ptr<std::string>())
+	{
+		auto text_height = TextHeight(font, pointSize);
+		VGfloat text_y = mid_y() - text_height *.33f;
+		if(label)
+		{
+			auto label_y = y + h - TextHeight(FONT_PROP, pointSize/3);
+			::Text(x + w*.05f, label_y,
+				label->c_str(), FONT_PROP, pointSize/3);
+			if(text_y + text_height > label_y)
+			{
+				text_y = label_y - text_height*1.05f;
+			}
+		}
+				
+		::TextMid(mid_x(), text_y, str.c_str(), font, pointSize);
+	}
+	void TextMidBottom(const std::string & str, const Fontinfo & font, const int pointSize, boost::shared_ptr<std::string> label = boost::shared_ptr<std::string>())
+	{
+		if(label)
+		{
+			auto label_y = y + h - TextHeight(FONT_PROP, pointSize/3);
+			::Text(x + w*.05f, label_y,
+				label->c_str(), FONT_PROP, pointSize/3);
+		}
+				
+		::TextMid(mid_x(), y + h *.05f, str.c_str(), font, pointSize);
+	}
+	void Roundrect(VGfloat corner)
+	{
+		::Roundrect(x, y, w, h, corner, corner);
+	}
+	void Rect()
+	{
+		::Rect(x,y,w,h);
+	}
+	void Zero()
+	{
+		x = y = w = h = 0;
+	}
 };
 
-boost::shared_ptr<DisplayState> pDisplayState(new DisplayState());
+int MaxPointSize(VGfloat width, VGfloat height, const std::string & text, const Fontinfo & f)
+{
+	int ret = 1;
+	bool bOverflowed = false;
+	while(!bOverflowed)
+	{
+		ret++;
+		if(TextHeight(f, ret) > height)
+			bOverflowed = true;
+		else if(TextWidth(text.c_str(), f, ret) > width)
+			bOverflowed = true;
+	}
+	return ret - 1;
+}
+
+std::string FormatDate(const struct tm &data)
+{
+	char buf[512];
+	strftime(buf, sizeof(buf), "%a %d %b %Y", &data);
+	return buf;
+}
+
+std::string FormatTime(const struct tm &data, time_t usecs)
+{
+	char buf[512];
+#if FRAMES
+       sprintf(buf,"%02d:%02d:%02d:%02ld",data.tm_hour,data.tm_min,data.tm_sec,usec *FPS/1000000);
+#else
+       sprintf(buf,"%02d:%02d:%02d",data.tm_hour,data.tm_min,data.tm_sec);
+#endif
+       return buf;
+}
 
 std::string get_arg(const std::string & input, int index, bool bTerminated = true)
 {
@@ -205,13 +398,299 @@ std::string get_arg(const std::string & input, int index, bool bTerminated = tru
 
 int get_arg_int(const std::string &input, int index, bool bTerminated = true)
 {
-	return std::stoi(get_arg(input, index));
+	return std::stoi(get_arg(input, index, bTerminated));
 }
+
+int get_arg_l(const std::string &input, int index, bool bTerminated = true)
+{
+	return std::stol(get_arg(input, index, bTerminated));
+}
+
+long long get_arg_ll(const std::string &input, int index, bool bTerminated = true)
+{
+	return std::stoll(get_arg(input, index, bTerminated));
+}
+
+boost::shared_ptr<long long> get_arg_pll(const std::string &input, int index, bool bTerminated = true)
+{
+	auto str = get_arg(input, index, bTerminated);
+	if(str.length() <= 0)
+		return boost::shared_ptr<long long>();
+	return boost::shared_ptr<long long>(new long long(std::stoull(str)));
+}
+
 
 bool get_arg_bool(const std::string &input, int index, bool bTerminated = true)
 {
-	return get_arg_int(input, index) != 0;
+	return get_arg_int(input, index, bTerminated) != 0;
 }
+
+class DisplayState
+{
+public:
+	TallyDisplays TD;
+	DisplayState()
+	: m_bRecalcReqd(true), m_bRotationReqd(false), m_bAnalogueClock(true),m_bAnalogueClockLocal(true),m_bDigitalClockUTC(false),m_bDigitalClockLocal(true),m_bDate(true), m_bDateLocal(true), m_bLandscape(true), m_AnalogueNumbers(1)
+	{}
+
+	bool LayoutEqual(boost::shared_ptr<DisplayState> pOther) const
+	{
+		return pOther && LayoutEqual(*pOther);
+	}
+	bool LayoutEqual(const DisplayState & other) const
+	{
+		return  other.m_bAnalogueClock        == m_bAnalogueClock &&
+			other.m_bAnalogueClockLocal   == m_bAnalogueClockLocal   &&
+			other.m_bDigitalClockUTC      == m_bDigitalClockUTC      &&
+			other.m_bDigitalClockLocal    == m_bDigitalClockLocal    &&
+			other.m_bDate                 == m_bDate                 &&
+			other.m_bDateLocal            == m_bDateLocal            &&
+			other.m_bLandscape            == m_bLandscape ;
+	}
+	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat _width, VGfloat _height)
+	{
+		auto day = (m_bDateLocal? local:utc).tm_mday;
+		if(m_bRecalcReqd || lastDayOfMonth != day)
+		{
+			m_bRotationReqd = _width > _height;
+			if(m_bLandscape)
+				m_bRotationReqd = !m_bRotationReqd;
+			auto width  = m_bRotationReqd? _height:_width;
+			auto height = m_bRotationReqd? _width:_height;
+			//Firstly the status text, which will always be in the bottom left corner
+			m_statusTextSize = std::min(width,height)/100.0f;
+			auto statusTextHeight = TextHeight(FONT_PROP, m_statusTextSize);
+			//Start off by assuming the text is the full width, this will change if we have an analogue clock and we're in landscape
+			auto textWidth = width;
+			
+			if(m_bAnalogueClock)
+			{
+				auto dim = std::min(width, height);
+				if(m_bLandscape)
+					textWidth -= dim;
+				//Always in the top right corner
+				m_boxAnalogue = DisplayBox(width - dim, height - dim, dim, dim);
+				m_hours_x.reset(new std::map<int, VGfloat>());
+				m_hours_y.reset(new std::map<int, VGfloat>());
+				int i;
+				VGfloat factor = 9.0f/20.0f;
+				if(m_AnalogueNumbers == 2)
+					factor = 7.0f/20.0f;
+				for(i = 0; i < 12; i++)
+				{
+					(*m_hours_x)[i] = cosf(M_PI*i/6.0f) * dim*factor;
+					(*m_hours_x)[i] -= dim/30.0f;
+					(*m_hours_y)[i] = sinf(M_PI*i/6.0f) * dim*factor;
+				}
+			}
+			else
+			{
+				m_boxAnalogue.Zero();
+				m_hours_x.reset();
+				m_hours_y.reset();
+			}
+
+			m_boxStatus = DisplayBox(0,0, textWidth, statusTextHeight*3.2f);
+			VGfloat textTop = height;
+#define textHeight (textTop - m_boxStatus.h)
+			if(!m_bLandscape)
+				textTop -= m_boxAnalogue.h;
+			int digitalCols = 0;
+			if(m_bDigitalClockUTC)
+				digitalCols++;
+			if(m_bDigitalClockLocal)
+				digitalCols++;
+			if(m_bDate)
+				digitalCols++;
+			if(!m_bLandscape || m_bAnalogueClock)
+				digitalCols = 1;
+			int digitalCol = 0;
+#define INC_COL		if(++digitalCol >= digitalCols) \
+			{ \
+				digitalCol = 0; \
+				textTop -= digitalHeight; \
+			}
+			VGfloat digitalColWidth = textWidth/((float)digitalCols);
+			VGfloat digitalHeight = 0;
+			if(m_bDigitalClockUTC || m_bDigitalClockLocal)
+			{
+				std::string clockStr = "99:99:99";
+#if FRAMES
+				clockStr = clockStr + ":99";
+#endif
+				if(m_bDigitalClockUTC && m_bDigitalClockLocal)
+					clockStr = "TOD " + clockStr;
+				m_digitalPointSize = MaxPointSize(digitalColWidth*.95f, textHeight, clockStr, FONT_MONO);
+				digitalHeight = TextHeight(FONT_MONO, m_digitalPointSize)*1.1f;
+				DisplayBox topDigital(digitalColWidth*digitalCol, textTop - digitalHeight, digitalColWidth, digitalHeight);
+				INC_COL
+				if(m_bDigitalClockUTC && m_bDigitalClockLocal)
+				{
+					DisplayBox bottomDigital(digitalColWidth*digitalCol, textTop - digitalHeight, digitalColWidth, digitalHeight);
+					INC_COL
+					//Try to make digital clock below analogue clock the same
+					if(m_bAnalogueClockLocal)
+					{
+						m_boxLocal = topDigital;
+						m_boxUTC = bottomDigital;
+					}
+					else
+					{
+						m_boxUTC = topDigital;
+						m_boxLocal = bottomDigital;
+					}
+				}
+				else
+					m_boxUTC = m_boxLocal = topDigital;
+			}
+			else
+			{
+				m_digitalPointSize = 0;
+				m_boxUTC.Zero(); m_boxLocal.Zero();
+			}
+			//Right, digital clocks done, move onto the date
+			if(m_bDate)
+			{
+				auto dateStr = FormatDate(m_bDateLocal? local:utc);
+				m_datePointSize = MaxPointSize(digitalColWidth*.9f, textHeight, dateStr, FONT_PROP);
+				auto dateHeight = TextHeight(FONT_PROP, m_datePointSize);
+				m_boxDate = DisplayBox(digitalColWidth*digitalCol, textTop - dateHeight *1.1, digitalColWidth, dateHeight*1.2);
+
+			}
+			else
+			{
+				m_datePointSize = 0;
+				m_boxDate.Zero();
+			}
+			if(digitalCols > 1)
+			{
+				digitalHeight = std::max(m_boxDate.h, digitalHeight);
+#define FIX_HEIGHT(x)           if((x).h > 0) \
+				{ \
+					(x).y -= digitalHeight - (x).h; \
+					(x).h = digitalHeight; \
+				}
+				FIX_HEIGHT(m_boxDate)
+				FIX_HEIGHT(m_boxUTC)
+				FIX_HEIGHT(m_boxLocal)
+#undef FIX_HEIGHT
+				textTop -= digitalHeight;
+			}
+			else
+				textTop -= m_boxDate.h;
+			m_boxTallies = DisplayBox(0,textTop - textHeight, textWidth, textHeight);
+			m_bRecalcReqd = false;
+			lastDayOfMonth = day;
+			return true;
+		}
+		return false;
+	}
+	bool RotationReqd()
+	{
+		return m_bRotationReqd;
+	}
+
+	void UpdateFromMessage(const std::string & message)
+	{
+		bool newVal;
+#define UPDATE_VAL(val,idx) newVal = get_arg_bool(message,(idx)); \
+			    m_bRecalcReqd = m_bRecalcReqd || ((val) != newVal); \
+			    (val) = newVal;
+		UPDATE_VAL(m_bAnalogueClock,      1)
+		UPDATE_VAL(m_bAnalogueClockLocal, 2)
+		UPDATE_VAL(m_bDigitalClockUTC,    3)
+		UPDATE_VAL(m_bDigitalClockLocal,  4)
+		UPDATE_VAL(m_bDate,               5)
+		UPDATE_VAL(m_bDateLocal,          6)
+		UPDATE_VAL(m_bLandscape,          7)
+		bool numbersPresent = m_AnalogueNumbers != 0;
+		bool numbersOutside = m_AnalogueNumbers != 2;
+		UPDATE_VAL(numbersPresent,8);
+		UPDATE_VAL(numbersOutside,9);
+#undef UPDATE_VAL
+		m_AnalogueNumbers = numbersPresent? (numbersOutside? 1 : 2)
+						    : 0;
+	}
+
+//Simple accessor methods
+	bool Rotate()
+	{
+		return m_bRotationReqd;
+	}
+	bool AnalogueClock(DisplayBox & dBox, bool &bLocal, boost::shared_ptr<const std::map<int, VGfloat> > &hours_x, boost::shared_ptr<const std::map<int, VGfloat> > &hours_y, int &numbers)
+	{
+		dBox = m_boxAnalogue;
+		bLocal = m_bAnalogueClockLocal;
+		hours_x = m_hours_x;
+		hours_y = m_hours_y;
+		numbers = m_AnalogueNumbers;
+		return m_bAnalogueClock;
+	}
+
+	bool Date(DisplayBox & dBox, bool &bLocal, int & pointSize)
+	{
+		dBox = m_boxDate;
+		bLocal = m_bDateLocal;
+		pointSize = m_datePointSize;
+		return m_bDate;
+	}
+
+	bool DigitalLocal(DisplayBox & dBox, int & pointSize, std::string & prefix)
+	{
+		dBox = m_boxLocal;
+		pointSize = m_digitalPointSize;
+		if(m_bDigitalClockUTC)
+			prefix = "TOD ";
+		else
+			prefix = std::string();
+		return m_bDigitalClockLocal;
+	}
+
+	bool DigitalUTC(DisplayBox & dBox, int & pointSize, std::string & prefix)
+	{
+		dBox = m_boxUTC;
+		pointSize = m_digitalPointSize;
+		if(m_bDigitalClockLocal)
+			prefix = "UTC ";
+		else
+			prefix = std::string();
+		return m_bDigitalClockUTC;
+	}
+
+	DisplayBox StatusBox(int &pointSize)
+	{
+		pointSize = m_statusTextSize;
+		return m_boxStatus;
+	}
+
+	DisplayBox TallyBox()
+	{
+		return m_boxTallies;
+	}
+
+private:
+	bool m_bRecalcReqd;
+	bool m_bRotationReqd;
+	DisplayBox m_boxAnalogue;
+	int m_statusTextSize;
+	DisplayBox m_boxStatus, m_boxUTC, m_boxLocal, m_boxDate, m_boxTallies;
+	int m_digitalPointSize;
+	int m_datePointSize;
+	int lastDayOfMonth = -1;
+	boost::shared_ptr<std::map<int, VGfloat>> m_hours_x;
+	boost::shared_ptr<std::map<int, VGfloat>> m_hours_y;
+
+	bool m_bAnalogueClock;
+	bool m_bAnalogueClockLocal;
+	bool m_bDigitalClockUTC;
+	bool m_bDigitalClockLocal;
+	bool m_bDate;
+	bool m_bDateLocal;
+	bool m_bLandscape;
+	int m_AnalogueNumbers;
+};
+
+boost::shared_ptr<DisplayState> pDisplayState(new DisplayState());
 
 int handle_tcp_message(const std::string &message, client & conn)
 {
@@ -254,13 +733,28 @@ int handle_tcp_message(const std::string &message, client & conn)
 		pNew->TD.nCols[row] = col_count;
 		bChanged = pOld->TD.nCols[row] != col_count;
 	}
-	else if(cmd == "SETTALLY")
+	else if(cmd == "SETTALLY" || cmd == "SETCOUNTDOWN")
 	{
 		int row = get_arg_int(message,1);
 		int col = get_arg_int(message,2);
-		pNew->TD.displays[row][col].reset(new SimpleTallyState(get_arg(message,3),
+		if(cmd == "SETCOUNTDOWN")
+		{
+			struct timeval target;
+			target.tv_sec = get_arg_ll(message,5);
+			target.tv_usec = get_arg_l(message,6);
+
+			pNew->TD.displays[row][col].reset(new CountdownClock(get_arg(message,3),
+						  get_arg(message,4),
+						  get_arg(message,8,false),
+						  target,
+						  get_arg_pll(message,7)));
+		}
+		else
+		{
+			pNew->TD.displays[row][col].reset(new SimpleTallyState(get_arg(message,3),
 						  get_arg(message,4),
 						  get_arg(message,5,false)));
+		}
 		bChanged = !pNew->TD.displays[row][col]->Equals(pOld->TD.displays[row][col]);
 		struct timeval tvTmp;
 		tvTmp.tv_sec = tvTmp.tv_usec = 0;
@@ -273,14 +767,10 @@ int handle_tcp_message(const std::string &message, client & conn)
 		pNew->TD.sProfName = get_arg(message, 1);
 		bChanged = pNew->TD.sProfName != pOld->TD.sProfName;
 	}
-	else if(cmd == "SETCLOCKS")
+	else if(cmd == "SETLAYOUT")
 	{
-		pNew->bAnalogueClockEnabled = get_arg_bool(message,1);
-		pNew->bAnalogueClockLocal = get_arg_bool(message,2);
-		pNew->bDigitalClockUTC = get_arg_bool(message,3);
-		pNew->bDigitalClockLocal = get_arg_bool(message,4);
-		pNew->bDate = get_arg_bool(message,5);
-		bChanged = pNew->ClocksEqual(pOld);
+		pNew->UpdateFromMessage(message);
+		bChanged = !pNew->LayoutEqual(pOld);
 	}
 	else
 	{
@@ -388,18 +878,11 @@ int main(int argc, char *argv[]) {
 	fd_set rfds;
 	struct timeval timeout;
 	VGfloat commsWidth = -1;
-	VGfloat commsHeight = -1;
-	VGfloat commsTextHeight = -1;
-	VGfloat timeHeights[2] = {-1.0f,-1.0f};
-	VGfloat tallyHeight = -1.0f;
-	int i;
+	VGfloat commsTextHeight = 0;
 	time_t tm_last_comms_good = 0;
-	VGfloat hours_x[12];
-	VGfloat hours_y[12];
 	timeout.tv_usec = timeout.tv_sec = 0;
 	std::string configFile = "piclock.cfg";
 	std::string last_date_string;
-	int dateSize = -1;
 	if(argc > 1)
 		configFile = argv[1];
 	po::variables_map vm;
@@ -411,21 +894,12 @@ int main(int argc, char *argv[]) {
 	init(&iwidth, &iheight);					// Graphics initialization
 
 	struct timeval tval;
-	struct tm tm_now;
+	struct tm tm_local, tm_utc;
 
 	VGfloat offset = iheight*.05f;
-	VGfloat width = iwidth - offset;
-	VGfloat height = iheight - offset;
+	VGfloat inner_width = iwidth - offset;
+	VGfloat inner_height = iheight - offset;
 
-	VGfloat clock_width = height;
-	VGfloat text_width = width - clock_width;
-
-	for(i = 0; i < 12; i++)
-	{
-		hours_x[i] = cosf(M_PI*i/6.0f) * height*9.0f/20.0f;
-		hours_x[i] -= height/30.0f;
-		hours_y[i] = sinf(M_PI*i/6.0f) * height*9.0f/20.0f;
-	}
 	srand(time(NULL));
 	int vrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
 	int hrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
@@ -447,13 +921,29 @@ int main(int argc, char *argv[]) {
 	{
 		std::string profName;
 		int i;
-		char buf[256];
 		gettimeofday(&tval, NULL);
-		localtime_r(&tval.tv_sec, &tm_now);
+		localtime_r(&tval.tv_sec, &tm_local);
+		gmtime_r(&tval.tv_sec, &tm_utc);
+		//Copy (reference to) current state, so it won't change whilst we're processing it...
+		boost::shared_ptr<DisplayState> pDS = pDisplayState;
 		Start(iwidth, iheight);					// Start the picture
+		if(pDS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height))
+		{
+			//Force recalc...
+			commsWidth = -1;
+			pDS->TD.textSize = -1;
+		}
+		if(pDS->Rotate())
+		{
+			Rotate(90);
+			//After rotating our output has now disappeared down below our co-ordinate space, so translate our co-ordinate space down to find it...
+			Translate(0,-iwidth);
+		}
 		Background(0, 0, 0);					// Black background
 		Fill(255, 255, 255, 1);					// white text
 		Stroke(255, 255, 255, 1);				// White strokes
+
+		//Screen saver offsets...
 		if(tval.tv_sec != prev_sec)
 		{
 			prev_sec =  tval.tv_sec;
@@ -462,181 +952,52 @@ int main(int argc, char *argv[]) {
 		}
 		//Write out the text
 		Translate(h_offset_pos, v_offset_pos);
-		if(timeHeights[0] < 0)
+		DisplayBox db;
+		int pointSize;
+		std::string prefix;
+		if(pDS->DigitalLocal(db, pointSize, prefix))
 		{
-#if FRAMES
-			timeHeights[0] = TextHeight(MonoTypeface,text_width/10.0f);
-#else
-			timeHeights[0] = TextHeight(MonoTypeface,text_width/7.0f);
-#endif
+			std::string time_str = prefix + FormatTime(tm_local,tval.tv_usec);
+			db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
 		}
-#if FRAMES
-		sprintf(buf,"%02d:%02d:%02d:%02ld",tm_now.tm_hour,tm_now.tm_min,tm_now.tm_sec,tval.tv_usec *FPS/1000000);
-		TextMid(text_width / 2.0f, height -timeHeights[0] *.9f, buf, MonoTypeface, text_width / 10.0f);	// Timecode
-#else
-		sprintf(buf,"%02d:%02d:%02d",tm_now.tm_hour,tm_now.tm_min,tm_now.tm_sec);
-		TextMid(text_width / 2.0f, height -timeHeights[0] *.9f, buf, MonoTypeface, text_width / 7.0f);	// Timecode
-#endif
-		strftime(buf, sizeof(buf), "%a %d %b %Y", &tm_now);
-		if(buf != last_date_string)
+		if(pDS->DigitalUTC(db, pointSize, prefix))
 		{
-			dateSize = 0;
-			VGfloat font_width = 0;
-			while(font_width *1.1f < text_width)
-			{
-				font_width = TextWidth(buf,SerifTypeface, ++dateSize);
-			}
-			dateSize--;
-			last_date_string = buf;
-			timeHeights[1] = TextHeight(SerifTypeface, dateSize) *1.1f;
-			tallyHeight = height - timeHeights[0]*1.2f - timeHeights[1];
+			std::string time_str = prefix + FormatTime(tm_utc,tval.tv_usec);
+			db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
 		}
-		TextMid(text_width / 2.0f, height -timeHeights[0] - timeHeights[1], buf, SerifTypeface, dateSize);
+		bool bLocal;
+		if(pDS->Date(db, bLocal, pointSize))
+		{
+			db.TextMidBottom(FormatDate(bLocal? tm_local: tm_utc),
+						FONT_PROP, pointSize);
+		}
+
 		if(GPI_MODE == 1)
 		{
+			if(pDS->TD.nRows != 2)
+				pDS->TD.textSize = -1;
+			pDS->TD.nRows = 2;
+			pDS->TD.nCols_default = 1;
+			pDS->TD.nCols.empty();
 			uint8_t gpis = pifacedigital_read_reg(INPUT,0);
-			uint8_t colour_weight = (gpis & 1) ? 100:255;
-			Fill(colour_weight,colour_weight*0.55,0,1);
-			Roundrect(text_width/100.0f,height*0.5/10.0f,text_width *.98f,height*2.0f/10.0f,width/100.0f, height/100.0f);
-			uint8_t fill_weight = (gpis & 1)? 100:255;
-			Fill(fill_weight,fill_weight,fill_weight, 1);
-			TextMid(text_width /2.0f, height *1.0f/10.0f, "Mic Live", SerifTypeface, text_width/10.0f);
-			colour_weight = (gpis & 2) ? 100:255;
-			Fill(colour_weight,0,0,1);
-			Roundrect(text_width/100.0f,height*3.0/10.0f,text_width *.98f,height*2.0f/10.0f,width/100.0f, height/100.0f);
-			fill_weight = (gpis & 2)? 100:255;
-			Fill(fill_weight,fill_weight,fill_weight, 1);
-			TextMid(text_width /2.0f, height *3.5f/10.0f, "On Air", SerifTypeface, text_width/10.0f);
+			uint8_t colour_weight = (gpis & 1) ? 50:255;
+			uint8_t fill_weight = (gpis & 1)? 50:255;
+			pDS->TD.displays[0][0].reset(
+				new SimpleTallyState(
+				    TallyColour(fill_weight, fill_weight, fill_weight),
+				    TallyColour(colour_weight, colour_weight*0.55,0),
+				    "Mic Live"));
+			colour_weight = (gpis & 2) ? 50:255;
+			fill_weight = (gpis & 2)? 50:255;
+			pDS->TD.displays[1][0].reset(
+				new SimpleTallyState(
+				    TallyColour(fill_weight, fill_weight, fill_weight),
+				    TallyColour(colour_weight, colour_weight*0.55,0),
+				    "On Air"));
 		}
-		else if(GPI_MODE == 2)
-		{
-			//Copy (reference to) current state, so it won't change whilst we're processing it...
-			boost::shared_ptr<DisplayState> pDS = pDisplayState;
-			//Draw comms status
-			int pointSize = height/100.0f;
-			if(commsWidth < 0)
-			{
-				commsWidth =
-					std::max(TextWidth("Comms OK", SerifTypeface, pointSize),
-						 TextWidth("Comms Failed", SerifTypeface, pointSize));
-				for(unsigned int window = 0; window < tally_hosts.size(); window++)
-				{
-					char buf[512];
-					buf[511] = '\0';
-					snprintf(buf, 511, "Tally Server %d", window + 1);
-					commsWidth = std::max(commsWidth, TextWidth(buf, SerifTypeface, pointSize));
-				}
-				commsWidth *= 1.2f;
-				commsTextHeight = TextHeight(SerifTypeface, pointSize);
-				commsHeight = 3.2f*commsTextHeight;
-			}
-			bool bAnyComms = false;
-			for(unsigned int window = 0; window < tally_hosts.size(); window++)
-			{
-				bAnyComms = bAnyComms || bComms[window];
-				if(bComms[window])
-					Fill(0,100,0,1);
-				else
-					Fill(190,0,0,1);
-				VGfloat base_x = text_width - commsWidth * (VGfloat)(tally_hosts.size()-window);
-				VGfloat base_y = 0;
-				Rect( base_x, base_y, commsWidth, commsHeight);
-				Fill(200,200,200,1);
-				char buf[512];
-				buf[511] = '\0';
-				base_x += commsWidth*.5f;
-				snprintf(buf, 511, "Tally Server %d", window + 1);
-				TextMid(base_x, base_y + commsTextHeight*1.8f, buf, SerifTypeface, pointSize);
-				snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
-				TextMid(base_x, base_y + commsTextHeight*0.4f, buf, SerifTypeface, pointSize);
-			}
-			if(bAnyComms)
-			{
-				tm_last_comms_good = tval.tv_sec;
-			}
-			//Stop showing stuff after 5 seconds of comms failed...
-			else if(pDS->TD.nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
-			{
-				pDisplayState = pDS = boost::shared_ptr<DisplayState>(new DisplayState());
-			}
-				
-			profName = pDS->TD.sProfName;
-			if(pDS->TD.nRows > 0)
-			{
-				//Use 50% of height, 10% up the screen
-				VGfloat tallyBase = std::max(commsHeight*1.1f, height/20.0f);
-				VGfloat row_height = (tallyHeight - tallyBase)/((VGfloat)pDS->TD.nRows);
-				VGfloat buffer = row_height*.02f;
-				VGfloat col_width_default = text_width/((VGfloat)pDS->TD.nCols_default);
-				if(pDS->TD.textSize < 0)
-				{
-					pDS->TD.textSize = 1;
-					bool bOverflown = false;
-					bool bFoundAny = true;
-					while(!bOverflown && bFoundAny)
-					{
-						pDS->TD.textSize++;
-						if(TextHeight(SerifTypeface, pDS->TD.textSize) > row_height*.9f)
-							bOverflown = true;
-						bFoundAny = false;
-						for(int row = 0; row < pDS->TD.nRows; row++)
-						{
-							int col_count = pDS->TD.nCols[row];
-							VGfloat col_width = col_width_default;
-							if(col_count <= 0)
-								col_count = pDS->TD.nCols_default;
-							else
-								col_width = text_width/((VGfloat)col_count);
-							for(int col = 0; col < col_count && !bOverflown; col++)
-							{
-								auto item = pDS->TD.displays[row][col];
-								if(!item)
-									continue;
-								bFoundAny = true;
-								if(TextWidth(item->Text(tval)->c_str(),item->IsMonoSpaced() ? MonoTypeface : SerifTypeface, pDS->TD.textSize) > col_width*.9f)
-									bOverflown=true;
-							}
-						}
-					}
-					pDS->TD.textSize--;
-					printf("Optimal Text Size: %d\n",pDS->TD.textSize);
-				}
-				VGfloat textOffset = -TextHeight(SerifTypeface, pDS->TD.textSize)*.33f;
-				//float y_offset = height/10.0f;
-				for(int row = 0; row < pDS->TD.nRows; row++)
-				{
-					VGfloat base_y = ((VGfloat)row)*row_height + tallyBase;
-					int col_count = pDS->TD.nCols[row];
-					VGfloat col_width = col_width_default;
-					if(col_count <= 0)
-						col_count = pDS->TD.nCols_default;
-					else
-						col_width = text_width/((VGfloat)col_count);
-					for(int col = 0; col < col_count; col++)
-					{
-#define curTally (pDS->TD.displays[row][col])
-						VGfloat base_x = ((VGfloat)col)*col_width + text_width/100.0f;
-						Fill(curTally->BG(tval)->R(),curTally->BG(tval)->G(),curTally->BG(tval)->B(),1);
-						Roundrect(base_x, base_y, col_width - buffer, row_height - buffer,row_height/10.0f, row_height/10.0f);
-						Fill(curTally->FG(tval)->R(),curTally->FG(tval)->G(),curTally->FG(tval)->B(), 1);
-						TextMid(base_x + (col_width - buffer)/2.0f, textOffset + base_y + row_height/2.0f, curTally->Text(tval)->c_str(), curTally->IsMonoSpaced()? MonoTypeface : SerifTypeface, pDS->TD.textSize);
-					}
-				}
-			}
-		}
-		//Done with displays, back to common code...
-		Fill(127, 127, 127, 1);
-		Text(0, 0, "Press Ctrl+C to quit", SerifTypeface, text_width / 150.0f);
-		if(GPI_MODE == 2)
-		{
-			char buf[8192];
-			buf[sizeof(buf)-1] = '\0';
-			if(profName.empty())
-				snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
-			else
-				snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
-			Text(0, TextHeight(SerifTypeface,text_width/150.0f)*1.5f, buf, SerifTypeface, text_width / 100.0f);
-		}
+
+		//Draw NTP sync status
+		db = pDS->StatusBox(pointSize);
 		Fill(255,255,255,1);
 		const char * sync_text;
 		if(ntp_state_data.status == 0)
@@ -653,92 +1014,242 @@ int main(int argc, char *argv[]) {
 			else
 				sync_text = "Unknown Synch!";
 		}
+		const char * header_text = "NTP-Derived Clock";
+		auto statusBoxLen = std::max(TextWidth(sync_text, FONT_PROP, pointSize),
+					     TextWidth(header_text, FONT_PROP, pointSize))*1.1f;
+		auto statusTextHeight = TextHeight(FONT_PROP, pointSize);
 		//Draw a box around NTP status
-		Rect(width - clock_width*.2, 0, clock_width*.2, height*.05 );
-		Fill(255,255,255,1);
+		Rect(db.x + db.w - statusBoxLen, db.y, statusBoxLen, db.h);
+		Fill(200,200,200,1);
 		//2 bits of text
-		TextMid(width - clock_width*.1, height/140.0f, sync_text, SerifTypeface, height/70.0f);
-		TextMid(width - clock_width*.1, height*4.0f/140.0f, "NTP-Derived Clock", SerifTypeface, height/70.0f);
-		Translate(text_width + clock_width/2.0f, height/2.0f);
-		//Write out hour labels around edge of clock
-		for(i = 0; i < 12; i++)
-		{
-			char buf[5];
-			sprintf(buf, "%d", i? i:12);
-			TextMid(hours_y[i],hours_x[i], buf, SansTypeface, height/15.0f);
-		}
-		//Go around drawing dashes around edge of clock
-		StrokeWidth(clock_width/100.0f);
-		VGfloat start = height *7.5f/20.0f;
-		VGfloat end_short = height *6.7f/20.0f;
-		VGfloat end_long = height *6.3f/20.0f;
-#ifndef NO_COLOUR_CHANGE
-		Stroke(255,0,0,1);
-#endif
-		//As we go around we actually keep drawing in the same place every time, but we keep rotating the co-ordinate space around the centre point of the clock...
-		for(i = 0; i < 60; i++)
-		{
-			if((i %5) == 0)
-				Line(0, start, 0, end_long);
-			else
-				Line(0, start, 0, end_short);
-			Rotate(-6);
-#ifndef NO_COLOUR_CHANGE
-			//Fade red slowly out over first second
-			if(i == tm_now.tm_sec)
-			{
-				if(i < 1)
-				{
-					//Example to fade over 2 seconds...
-					//VGfloat fade = 128.0f * tm_now.tm_sec +  127.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
-					VGfloat fade = 255.0f * ((VGfloat)tval.tv_usec)/200000.0f;
-					if(fade > 255.0f)
-						fade = 255.0f;
-					Stroke(255, fade, fade, 1);
-				}
-				else
-					Stroke(255,255,255,1);
-			}
-#endif
-		}
-		Stroke(255,255,255,1);
-		//Again, rotate co-ordinate space so we're just drawing an upright line every time...
-		StrokeWidth(clock_width/200.0f);
-		//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
-		VGfloat sec_rotation = -(6.0f * tm_now.tm_sec);
-		VGfloat sec_part = sec_rotation;
-		if(tval.tv_usec > MOVE_HAND_AT)
-			sec_rotation -= ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
-		//Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
-		sec_part -= ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
-		VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
-		VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
-		Rotate(hour_rotation);
-		Line(0,0,0,height/4.0f); /* half-length hour hand */
-		Rotate(min_rotation - hour_rotation);
-		Line(0,0,0,height/2.0f); /* minute hand */
-		Rotate(sec_rotation - min_rotation);
-		Stroke(255,0,0,1);
-		Line(0,-height/10.0f,0,height/2.0f); /* second hand, with overhanging tail */
-		//Draw circle in centre
-		Fill(255,0,0,1);
-		Circle(0,0,clock_width/150.0f);
-		Rotate(-sec_rotation);
-		//Now draw some dots for seconds...
-#ifdef SECOND_DOTS
-		StrokeWidth(clock_width/100.0f);
-		Stroke(0,0,255,1);
-		VGfloat pos = height*7.9f/20.0f;
-		for(i = 0; i < 60; i++)
-		{
-			if(i <= tm_now.tm_sec)
-			{
-				Line(0, pos, 0, pos -10);
-			}
-			Rotate(-6);
-		}
-#endif
+		TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight *.5f, sync_text, FONT_PROP, pointSize);
+		TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight*1.8f, header_text, FONT_PROP, pointSize);
 
+		db.w -= statusBoxLen;
+
+		if(GPI_MODE == 2)
+		{
+			//Draw comms status
+			if(commsWidth < 0)
+			{
+				commsWidth =
+					std::max(TextWidth("Comms OK", FONT_PROP, pointSize),
+
+						 TextWidth("Comms Failed", FONT_PROP, pointSize));
+				for(unsigned int window = 0; window < tally_hosts.size(); window++)
+				{
+					char buf[512];
+					buf[511] = '\0';
+					snprintf(buf, 511, "Tally Server %d", window + 1);
+					commsWidth = std::max(commsWidth, TextWidth(buf, FONT_PROP, pointSize));
+				}
+				commsWidth *= 1.2f;
+				commsTextHeight = TextHeight(FONT_PROP, pointSize);
+			}
+			bool bAnyComms = false;
+			for(unsigned int window = 0; window < tally_hosts.size(); window++)
+			{
+				bAnyComms = bAnyComms || bComms[window];
+				if(bComms[window])
+					Fill(0,100,0,1);
+				else
+					Fill(190,0,0,1);
+				VGfloat base_x = db.x + db.w - commsWidth * (VGfloat)(tally_hosts.size()-window);
+				VGfloat base_y = db.y;
+				Rect( base_x, base_y, commsWidth, db.h);
+				Fill(200,200,200,1);
+				char buf[512];
+				buf[511] = '\0';
+				base_x += commsWidth*.5f;
+				snprintf(buf, 511, "Tally Server %d", window + 1);
+				TextMid(base_x, base_y + commsTextHeight*1.8f, buf, FONT_PROP, pointSize);
+				snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
+				TextMid(base_x, base_y + commsTextHeight*0.4f, buf, FONT_PROP, pointSize);
+			}
+			if(bAnyComms)
+			{
+				tm_last_comms_good = tval.tv_sec;
+			}
+			//Stop showing stuff after 5 seconds of comms failed...
+			else if(pDS->TD.nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
+			{
+				pDisplayState = pDS = boost::shared_ptr<DisplayState>(new DisplayState());
+				pDS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height);
+				commsWidth = -1;
+				pDS->TD.textSize = -1;
+			}
+		}
+		if(GPI_MODE)
+		{
+			profName = pDS->TD.sProfName;
+			if(pDS->TD.nRows > 0)
+			{
+				DisplayBox db = pDS->TallyBox();
+				VGfloat row_height = (db.h)/((VGfloat)pDS->TD.nRows);
+				VGfloat buffer = row_height*.02f;
+				VGfloat col_width_default = db.w/((VGfloat)pDS->TD.nCols_default);
+				if(pDS->TD.textSize < 0)
+				{
+					pDS->TD.textSize = 0xFFFFFFF;
+					for(int row = 0; row < pDS->TD.nRows; row++)
+					{
+						int col_count = pDS->TD.nCols[row];
+						VGfloat col_width = col_width_default;
+						if(col_count <= 0)
+							col_count = pDS->TD.nCols_default;
+						else
+							col_width = db.w/((VGfloat)col_count);
+						for(int col = 0; col < col_count; col++)
+						{
+							auto item = pDS->TD.displays[row][col];
+							if(!item)
+								continue;
+							auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (item->Label(tval)? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
+							pDS->TD.textSize = std::min(pDS->TD.textSize, maxItemSize);
+						}
+					}
+				}
+				//float y_offset = height/10.0f;
+				for(int row = 0; row < pDS->TD.nRows; row++)
+				{
+					VGfloat base_y = ((VGfloat)row)*row_height + db.y;
+					int col_count = pDS->TD.nCols[row];
+					VGfloat col_width = col_width_default;
+					if(col_count <= 0)
+						col_count = pDS->TD.nCols_default;
+					else
+						col_width = db.w/((VGfloat)col_count);
+					for(int col = 0; col < col_count; col++)
+					{
+						auto curTally = pDS->TD.displays[row][col];
+						if(!curTally)
+							continue;
+						DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
+						curTally->BG(tval)->Fill();
+						dbTally.Roundrect(row_height/10.0f);
+						curTally->FG(tval)->Fill();
+						dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), pDS->TD.textSize, curTally->Label(tval));
+					}
+				}
+			}
+		}
+		//Done with displays, back to common code...
+		Fill(127, 127, 127, 1);
+		db = pDS->StatusBox(pointSize);
+		int quitSize = pointSize/1.5f;
+		Text(db.x, db.y, "Press Ctrl+C to quit", FONT_PROP, quitSize);
+		if(GPI_MODE == 2)
+		{
+			char buf[8192];
+			buf[sizeof(buf)-1] = '\0';
+			if(profName.empty())
+				snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
+			else
+				snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
+			Text(db.x, db.y + TextHeight(FONT_PROP,quitSize)*1.5f, buf, FONT_PROP, pointSize);
+		}
+		boost::shared_ptr<const std::map<int, VGfloat>> hours_x;
+		boost::shared_ptr<const std::map<int, VGfloat>> hours_y;
+		Fill(255,255,255,1);
+		int numbers;
+		if(pDS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
+		{
+			//Right, now start drawing the clock
+
+			//Move to the centre of the clock
+			Translate(db.x + db.w/2.0f, db.y + db.h/2.0f);
+
+			if(numbers)
+				//Write out hour labels around edge of clock
+				for(i = 0; i < 12; i++)
+				{
+					char buf[5];
+					sprintf(buf, "%d", i? i:12);
+					TextMid(hours_y->at(i),hours_x->at(i), buf, FONT_HOURS, db.h/15.0f);
+				}
+			//Go around drawing dashes around edge of clock
+			StrokeWidth(db.w/100.0f);
+			VGfloat start, end_short, end_long;
+			if(numbers == 1)
+			{
+				start = db.h *7.5f/20.0f;
+				end_short = db.h *6.7f/20.0f;
+				end_long = db.h *6.3f/20.0f;
+			}
+			else
+			{
+				start = db.h *9.5f/20.0f;
+				end_short = db.h *8.8f/20.0f;
+				end_long = db.h *8.4f/20.0f;
+			}
+#ifndef NO_COLOUR_CHANGE
+			Stroke(255,0,0,1);
+#endif
+#define tm_now	(bLocal? tm_local : tm_utc)
+			//As we go around we actually keep drawing in the same place every time, but we keep rotating the co-ordinate space around the centre point of the clock...
+			for(i = 0; i < 60; i++)
+			{
+				if((i %5) == 0)
+					Line(0, start, 0, end_long);
+				else
+					Line(0, start, 0, end_short);
+				Rotate(-6);
+#ifndef NO_COLOUR_CHANGE
+				//Fade red slowly out over first second
+				if(i == tm_now.tm_sec)
+				{
+					if(i < 1)
+					{
+						//Example to fade over 2 seconds...
+						//VGfloat fade = 128.0f * tm_now.tm_sec +  127.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
+						VGfloat fade = 255.0f * ((VGfloat)tval.tv_usec)/200000.0f;
+						if(fade > 255.0f)
+							fade = 255.0f;
+						Stroke(255, fade, fade, 1);
+					}
+					else
+						Stroke(255,255,255,1);
+				}
+#endif
+			}
+			Stroke(255,255,255,1);
+			//Again, rotate co-ordinate space so we're just drawing an upright line every time...
+			StrokeWidth(db.w/200.0f);
+			//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
+			VGfloat sec_rotation = -(6.0f * tm_now.tm_sec);
+			VGfloat sec_part = sec_rotation;
+			if(tval.tv_usec > MOVE_HAND_AT)
+				sec_rotation -= ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
+			//Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
+			sec_part -= ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
+			VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
+			VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
+			Rotate(hour_rotation);
+			Line(0,0,0,db.h/4.0f); /* half-length hour hand */
+			Rotate(min_rotation - hour_rotation);
+			Line(0,0,0,db.h/2.0f); /* minute hand */
+			Rotate(sec_rotation - min_rotation);
+			Stroke(255,0,0,1);
+			Line(0,-db.h/10.0f,0,db.h/2.0f); /* second hand, with overhanging tail */
+			//Draw circle in centre
+			Fill(255,0,0,1);
+			Circle(0,0,db.w/150.0f);
+			Rotate(-sec_rotation);
+			//Now draw some dots for seconds...
+#ifdef SECOND_DOTS
+			StrokeWidth(db.w/100.0f);
+			Stroke(0,0,255,1);
+			VGfloat pos = db.h*7.9f/20.0f;
+			for(i = 0; i < 60; i++)
+			{
+				if(i <= tm_now.tm_sec)
+				{
+					Line(0, pos, 0, pos -10);
+				}
+				Rotate(-6);
+			}
+#endif
+		}
 		End();						   			// End the picture
 	}
 
