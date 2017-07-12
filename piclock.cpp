@@ -4,6 +4,8 @@
 #include <mutex>
 #include <string>
 #include <fstream>
+#include <map>
+#include <cctype>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -425,38 +427,71 @@ bool get_arg_bool(const std::string &input, int index, bool bTerminated = true)
 	return get_arg_int(input, index, bTerminated) != 0;
 }
 
-class DisplayState
+
+class OverallState
+{
+public:
+	bool RotationReqd(VGfloat width, VGfloat height)
+	{
+		if(m_bLandscape)
+			return width < height;
+		else
+			return width > height;
+	}
+
+	bool Landscape()
+	{
+		return m_bLandscape;
+	}
+
+	bool ScreenSaver()
+	{
+		return m_bScreenSaver;
+	}
+	void UpdateFromMessage(const std::string & message)
+	{
+		m_bLandscape = get_arg_bool(message,1);
+		m_bScreenSaver = get_arg_bool(message,2);
+	}
+
+	void SetLandscape(bool bLandscape)
+	{
+		m_bLandscape = bLandscape;
+	}
+
+private:
+	bool m_bLandscape = true;
+	bool m_bScreenSaver = true;
+};
+
+OverallState globalState;
+
+class RegionState
 {
 public:
 	TallyDisplays TD;
-	DisplayState()
-	: m_bRecalcReqd(true), m_bRotationReqd(false), m_bAnalogueClock(true),m_bAnalogueClockLocal(true),m_bDigitalClockUTC(false),m_bDigitalClockLocal(true),m_bDate(true), m_bDateLocal(true), m_bLandscape(true), m_AnalogueNumbers(1)
+	RegionState()
+	: m_bRecalcReqd(true), m_bAnalogueClock(true),m_bAnalogueClockLocal(true),m_bDigitalClockUTC(false),m_bDigitalClockLocal(true),m_bDate(true), m_bDateLocal(true), m_AnalogueNumbers(1)
 	{}
 
-	bool LayoutEqual(boost::shared_ptr<DisplayState> pOther) const
+	bool LayoutEqual(boost::shared_ptr<RegionState> pOther) const
 	{
 		return pOther && LayoutEqual(*pOther);
 	}
-	bool LayoutEqual(const DisplayState & other) const
+	bool LayoutEqual(const RegionState & other) const
 	{
 		return  other.m_bAnalogueClock        == m_bAnalogueClock &&
 			other.m_bAnalogueClockLocal   == m_bAnalogueClockLocal   &&
 			other.m_bDigitalClockUTC      == m_bDigitalClockUTC      &&
 			other.m_bDigitalClockLocal    == m_bDigitalClockLocal    &&
 			other.m_bDate                 == m_bDate                 &&
-			other.m_bDateLocal            == m_bDateLocal            &&
-			other.m_bLandscape            == m_bLandscape ;
+			other.m_bDateLocal            == m_bDateLocal;
 	}
-	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat _width, VGfloat _height)
+	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height)
 	{
 		auto day = (m_bDateLocal? local:utc).tm_mday;
 		if(m_bRecalcReqd || lastDayOfMonth != day)
 		{
-			m_bRotationReqd = _width > _height;
-			if(m_bLandscape)
-				m_bRotationReqd = !m_bRotationReqd;
-			auto width  = m_bRotationReqd? _height:_width;
-			auto height = m_bRotationReqd? _width:_height;
 			//Firstly the status text, which will always be in the bottom left corner
 			m_statusTextSize = std::min(width,height)/100.0f;
 			auto statusTextHeight = TextHeight(FONT_PROP, m_statusTextSize);
@@ -466,7 +501,7 @@ public:
 			if(m_bAnalogueClock)
 			{
 				auto dim = std::min(width, height);
-				if(m_bLandscape)
+				if(globalState.Landscape())
 					textWidth -= dim;
 				//Always in the top right corner
 				m_boxAnalogue = DisplayBox(width - dim, height - dim, dim, dim);
@@ -493,24 +528,9 @@ public:
 			m_boxStatus = DisplayBox(0,0, textWidth, statusTextHeight*3.2f);
 			VGfloat textTop = height;
 #define textHeight (textTop - m_boxStatus.h)
-			if(!m_bLandscape)
+			if(!globalState.Landscape())
 				textTop -= m_boxAnalogue.h;
-			int digitalCols = 0;
-			if(m_bDigitalClockUTC)
-				digitalCols++;
-			if(m_bDigitalClockLocal)
-				digitalCols++;
-			if(m_bDate)
-				digitalCols++;
-			if(!m_bLandscape || m_bAnalogueClock)
-				digitalCols = 1;
-			int digitalCol = 0;
-#define INC_COL		if(++digitalCol >= digitalCols) \
-			{ \
-				digitalCol = 0; \
-				textTop -= digitalHeight; \
-			}
-			VGfloat digitalColWidth = textWidth/((float)digitalCols);
+			VGfloat digitalColWidth = textWidth;
 			VGfloat digitalHeight = 0;
 			if(m_bDigitalClockUTC || m_bDigitalClockLocal)
 			{
@@ -522,12 +542,12 @@ public:
 					clockStr = "TOD " + clockStr;
 				m_digitalPointSize = MaxPointSize(digitalColWidth*.95f, textHeight, clockStr, FONT_MONO);
 				digitalHeight = TextHeight(FONT_MONO, m_digitalPointSize)*1.1f;
-				DisplayBox topDigital(digitalColWidth*digitalCol, textTop - digitalHeight, digitalColWidth, digitalHeight);
-				INC_COL
+				DisplayBox topDigital(0, textTop - digitalHeight, digitalColWidth, digitalHeight);
+				textTop -= digitalHeight;
 				if(m_bDigitalClockUTC && m_bDigitalClockLocal)
 				{
-					DisplayBox bottomDigital(digitalColWidth*digitalCol, textTop - digitalHeight, digitalColWidth, digitalHeight);
-					INC_COL
+					DisplayBox bottomDigital(0, textTop - digitalHeight, digitalColWidth, digitalHeight);
+					textTop -= digitalHeight;
 					//Try to make digital clock below analogue clock the same
 					if(m_bAnalogueClockLocal)
 					{
@@ -554,7 +574,7 @@ public:
 				auto dateStr = FormatDate(m_bDateLocal? local:utc);
 				m_datePointSize = MaxPointSize(digitalColWidth*.9f, textHeight, dateStr, FONT_PROP);
 				auto dateHeight = TextHeight(FONT_PROP, m_datePointSize);
-				m_boxDate = DisplayBox(digitalColWidth*digitalCol, textTop - dateHeight *1.1, digitalColWidth, dateHeight*1.2);
+				m_boxDate = DisplayBox(0, textTop - dateHeight *1.1, digitalColWidth, dateHeight*1.2);
 
 			}
 			else
@@ -562,32 +582,13 @@ public:
 				m_datePointSize = 0;
 				m_boxDate.Zero();
 			}
-			if(digitalCols > 1)
-			{
-				digitalHeight = std::max(m_boxDate.h, digitalHeight);
-#define FIX_HEIGHT(x)           if((x).h > 0) \
-				{ \
-					(x).y -= digitalHeight - (x).h; \
-					(x).h = digitalHeight; \
-				}
-				FIX_HEIGHT(m_boxDate)
-				FIX_HEIGHT(m_boxUTC)
-				FIX_HEIGHT(m_boxLocal)
-#undef FIX_HEIGHT
-				textTop -= digitalHeight;
-			}
-			else
-				textTop -= m_boxDate.h;
+			textTop -= m_boxDate.h;
 			m_boxTallies = DisplayBox(0,textTop - textHeight, textWidth, textHeight);
 			m_bRecalcReqd = false;
 			lastDayOfMonth = day;
 			return true;
 		}
 		return false;
-	}
-	bool RotationReqd()
-	{
-		return m_bRotationReqd;
 	}
 
 	void UpdateFromMessage(const std::string & message)
@@ -602,7 +603,9 @@ public:
 		UPDATE_VAL(m_bDigitalClockLocal,  4)
 		UPDATE_VAL(m_bDate,               5)
 		UPDATE_VAL(m_bDateLocal,          6)
-		UPDATE_VAL(m_bLandscape,          7)
+		bool bLandscape = globalState.Landscape();
+		UPDATE_VAL(bLandscape,            7)
+		globalState.SetLandscape(bLandscape);
 		bool numbersPresent = m_AnalogueNumbers != 0;
 		bool numbersOutside = m_AnalogueNumbers != 2;
 		UPDATE_VAL(numbersPresent,8);
@@ -610,6 +613,7 @@ public:
 #undef UPDATE_VAL
 		m_AnalogueNumbers = numbersPresent? (numbersOutside? 1 : 2)
 						    : 0;
+		m_bDigitalClockPrefix = m_bDigitalClockUTC && m_bDigitalClockLocal;
 	}
 
 //Simple accessor methods
@@ -639,7 +643,7 @@ public:
 	{
 		dBox = m_boxLocal;
 		pointSize = m_digitalPointSize;
-		if(m_bDigitalClockUTC)
+		if(m_bDigitalClockPrefix)
 			prefix = "TOD ";
 		else
 			prefix = std::string();
@@ -650,7 +654,7 @@ public:
 	{
 		dBox = m_boxUTC;
 		pointSize = m_digitalPointSize;
-		if(m_bDigitalClockLocal)
+		if(m_bDigitalClockPrefix)
 			prefix = "UTC ";
 		else
 			prefix = std::string();
@@ -666,6 +670,26 @@ public:
 	DisplayBox TallyBox()
 	{
 		return m_boxTallies;
+	}
+
+	VGfloat width() const
+	{
+		return m_width;
+	}
+
+	VGfloat height() const
+	{
+		return m_height;
+	}
+
+	VGfloat x() const
+	{
+		return m_x;
+	}
+
+	VGfloat y() const
+	{
+		return m_y;
 	}
 
 private:
@@ -684,13 +708,22 @@ private:
 	bool m_bAnalogueClockLocal;
 	bool m_bDigitalClockUTC;
 	bool m_bDigitalClockLocal;
+	bool m_bDigitalClockPrefix = false;
 	bool m_bDate;
 	bool m_bDateLocal;
 	bool m_bLandscape;
 	int m_AnalogueNumbers;
+	VGfloat m_x = 0.0f;
+	VGfloat m_y = 0.0f;
+	VGfloat m_width = 1.0;
+	VGfloat m_height = 1.0;
 };
 
-boost::shared_ptr<DisplayState> pDisplayState(new DisplayState());
+typedef std::map<int,boost::shared_ptr<RegionState>> RegionsMap_Base;
+typedef boost::shared_ptr<RegionsMap_Base> RegionsMap;
+
+RegionsMap pGlobalRegions(new RegionsMap_Base());
+
 
 int handle_tcp_message(const std::string &message, client & conn)
 {
@@ -714,75 +747,99 @@ int handle_tcp_message(const std::string &message, client & conn)
 		conn.write_line(to_write, boost::posix_time::time_duration(0,0,10),'\r');
 		return 3;
 	}
-	boost::shared_ptr<DisplayState> pOld = pDisplayState;
-	boost::shared_ptr<DisplayState> pNew(new DisplayState(*pOld));
+	RegionsMap pRegions(new RegionsMap_Base(*pGlobalRegions));
 	
-	bool bChanged = false;
-	bool bSizeChanged = false;
-	if(cmd == "SETSIZE")
+	if(cmd == "SETGLOBAL")
 	{
-		pNew->TD.nRows = get_arg_int(message,1);
-		pNew->TD.nCols_default = get_arg_int(message,2);
-		bChanged = pOld->TD.nRows != pNew->TD.nRows || pOld->TD.nCols_default != pNew->TD.nCols_default;
-		bSizeChanged = bChanged;
-	}
-	else if(cmd == "SETROW")
-	{
-		int row = get_arg_int(message,1);
-		int col_count = get_arg_int(message,2);
-		pNew->TD.nCols[row] = col_count;
-		bChanged = pOld->TD.nCols[row] != col_count;
-	}
-	else if(cmd == "SETTALLY" || cmd == "SETCOUNTDOWN")
-	{
-		int row = get_arg_int(message,1);
-		int col = get_arg_int(message,2);
-		if(cmd == "SETCOUNTDOWN")
-		{
-			struct timeval target;
-			target.tv_sec = get_arg_ll(message,5);
-			target.tv_usec = get_arg_l(message,6);
-
-			pNew->TD.displays[row][col].reset(new CountdownClock(get_arg(message,3),
-						  get_arg(message,4),
-						  get_arg(message,8,false),
-						  target,
-						  get_arg_pll(message,7)));
-		}
-		else
-		{
-			pNew->TD.displays[row][col].reset(new SimpleTallyState(get_arg(message,3),
-						  get_arg(message,4),
-						  get_arg(message,5,false)));
-		}
-		bChanged = !pNew->TD.displays[row][col]->Equals(pOld->TD.displays[row][col]);
-		struct timeval tvTmp;
-		tvTmp.tv_sec = tvTmp.tv_usec = 0;
-		bSizeChanged = !(pOld->TD.displays[row][col])
-			      || pNew->TD.displays[row][col]->Text(tvTmp) != pOld->TD.displays[row][col]->Text(tvTmp)
-		              || pNew->TD.displays[row][col]->IsMonoSpaced() != pOld->TD.displays[row][col]->IsMonoSpaced();
-	}
-	else if(cmd == "SETPROFILE")
-	{
-		pNew->TD.sProfName = get_arg(message, 1);
-		bChanged = pNew->TD.sProfName != pOld->TD.sProfName;
-	}
-	else if(cmd == "SETLAYOUT")
-	{
-		pNew->UpdateFromMessage(message);
-		bChanged = !pNew->LayoutEqual(pOld);
+		globalState.UpdateFromMessage(message);
 	}
 	else
 	{
-		//Unknwon command, just NACK
-		conn.write_line("NACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
-		return 1;
-	}
-	if(bChanged)
-	{
-		if(bSizeChanged)
-			pNew->TD.textSize = -1;
-		pDisplayState = pNew;
+		bool bChanged = false;
+		bool bSizeChanged = false;
+		int regionIndex = 0;
+
+		if(isdigit(cmd[0]))
+		{
+			char * pEnd;
+			regionIndex = strtoul(cmd.c_str(), &pEnd, 10);
+			//This step to stop possible confusion when you try to overwrite cmd with its own contents...
+			std::string newCmd = pEnd;
+			cmd = newCmd;
+		}
+		if(!(*pRegions)[regionIndex])
+		{
+			(*pRegions)[regionIndex] = boost::shared_ptr<RegionState>(new RegionState());
+		}
+		boost::shared_ptr<RegionState> pOld = (*pRegions)[regionIndex];
+		boost::shared_ptr<RegionState> pNew = boost::shared_ptr<RegionState>(new RegionState(*pOld));
+
+		if(cmd == "SETSIZE")
+		{
+			pNew->TD.nRows = get_arg_int(message,1);
+			pNew->TD.nCols_default = get_arg_int(message,2);
+			bChanged = pOld->TD.nRows != pNew->TD.nRows || pOld->TD.nCols_default != pNew->TD.nCols_default;
+			bSizeChanged = bChanged;
+		}
+		else if(cmd == "SETROW")
+		{
+			int row = get_arg_int(message,1);
+			int col_count = get_arg_int(message,2);
+			pNew->TD.nCols[row] = col_count;
+			bChanged = pOld->TD.nCols[row] != col_count;
+		}
+		else if(cmd == "SETTALLY" || cmd == "SETCOUNTDOWN")
+		{
+			int row = get_arg_int(message,1);
+			int col = get_arg_int(message,2);
+			if(cmd == "SETCOUNTDOWN")
+			{
+				struct timeval target;
+				target.tv_sec = get_arg_ll(message,5);
+				target.tv_usec = get_arg_l(message,6);
+
+				pNew->TD.displays[row][col].reset(new CountdownClock(get_arg(message,3),
+							  get_arg(message,4),
+							  get_arg(message,8,false),
+							  target,
+							  get_arg_pll(message,7)));
+			}
+			else
+			{
+				pNew->TD.displays[row][col].reset(new SimpleTallyState(get_arg(message,3),
+							  get_arg(message,4),
+							  get_arg(message,5,false)));
+			}
+			bChanged = !pNew->TD.displays[row][col]->Equals(pOld->TD.displays[row][col]);
+			struct timeval tvTmp;
+			tvTmp.tv_sec = tvTmp.tv_usec = 0;
+			bSizeChanged = !(pOld->TD.displays[row][col])
+				      || pNew->TD.displays[row][col]->Text(tvTmp) != pOld->TD.displays[row][col]->Text(tvTmp)
+				      || pNew->TD.displays[row][col]->IsMonoSpaced() != pOld->TD.displays[row][col]->IsMonoSpaced();
+		}
+		else if(cmd == "SETPROFILE")
+		{
+			pNew->TD.sProfName = get_arg(message, 1);
+			bChanged = pNew->TD.sProfName != pOld->TD.sProfName;
+		}
+		else if(cmd == "SETLAYOUT")
+		{
+			pNew->UpdateFromMessage(message);
+			bChanged = !pNew->LayoutEqual(pOld);
+		}
+		else
+		{
+			//Unknwon command, just NACK
+			conn.write_line("NACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
+			return 1;
+		}
+		if(bChanged)
+		{
+			if(bSizeChanged)
+				pNew->TD.textSize = -1;
+			(*pRegions)[regionIndex] = pNew;
+			pGlobalRegions = pRegions;
+		}
 	}
 	conn.write_line("ACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
 	return 1;
@@ -873,6 +930,13 @@ void read_settings(const std::string & filename,
 	po::notify(vm);
 }
 
+void clearRegions()
+{
+	RegionsMap pRegions(new std::map<int,boost::shared_ptr<RegionState>>());
+	(*pRegions)[0] = boost::shared_ptr<RegionState>(new RegionState());
+	pGlobalRegions = pRegions;
+}
+
 int main(int argc, char *argv[]) {
 	int iwidth, iheight;
 	fd_set rfds;
@@ -883,6 +947,7 @@ int main(int argc, char *argv[]) {
 	timeout.tv_usec = timeout.tv_sec = 0;
 	std::string configFile = "piclock.cfg";
 	std::string last_date_string;
+	clearRegions();
 	if(argc > 1)
 		configFile = argv[1];
 	po::variables_map vm;
@@ -897,8 +962,6 @@ int main(int argc, char *argv[]) {
 	struct tm tm_local, tm_utc;
 
 	VGfloat offset = iheight*.05f;
-	VGfloat inner_width = iwidth - offset;
-	VGfloat inner_height = iheight - offset;
 
 	srand(time(NULL));
 	int vrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
@@ -919,54 +982,78 @@ int main(int argc, char *argv[]) {
 		create_tcp_threads();
 	while(1)
 	{
-		std::string profName;
-		int i;
+		//Copy reference to current set of states, this then shouldn't change whilst we're processing it...
+		RegionsMap pRegions = pGlobalRegions;
 		gettimeofday(&tval, NULL);
 		localtime_r(&tval.tv_sec, &tm_local);
 		gmtime_r(&tval.tv_sec, &tm_utc);
-		//Copy (reference to) current state, so it won't change whilst we're processing it...
-		boost::shared_ptr<DisplayState> pDS = pDisplayState;
+		bool bFirst = true;
+
 		Start(iwidth, iheight);					// Start the picture
-		if(pDS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height))
+		VGfloat display_width = iwidth;
+		VGfloat display_height = iheight;
+		if(globalState.ScreenSaver())
 		{
-			//Force recalc...
-			commsWidth = -1;
-			pDS->TD.textSize = -1;
+			display_width -= offset;
+			display_height -= offset;
 		}
-		if(pDS->Rotate())
+		if(globalState.RotationReqd(display_width,display_height))
 		{
 			Rotate(90);
 			//After rotating our output has now disappeared down below our co-ordinate space, so translate our co-ordinate space down to find it...
 			Translate(0,-iwidth);
 		}
+
+		//Screen saver offsets...
+		if(globalState.ScreenSaver())
+		{
+			if(tval.tv_sec != prev_sec)
+			{
+				prev_sec =  tval.tv_sec;
+				h_offset_pos = abs(prev_sec%(hrate*2) - hrate)*offset/hrate;
+				v_offset_pos = abs(prev_sec%(vrate*2) - vrate)*offset/vrate;
+			}
+			Translate(h_offset_pos, v_offset_pos);
+		}
+		for(const auto & region : *pRegions)
+		{
+		std::string profName;
+		int i;
+		boost::shared_ptr<RegionState> pRS = region.second;
+
+		VGfloat inner_height = display_height * pRS->height();
+		VGfloat inner_width = display_width * pRS->width();
+
+		VGfloat return_x = display_width *pRS->x();
+		VGfloat return_y = display_width *pRS->y();
+		Translate(return_x, return_y);
+
+		if(pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height))
+		{
+			//Force recalc...
+			commsWidth = -1;
+			pRS->TD.textSize = -1;
+		}
 		Background(0, 0, 0);					// Black background
 		Fill(255, 255, 255, 1);					// white text
 		Stroke(255, 255, 255, 1);				// White strokes
 
-		//Screen saver offsets...
-		if(tval.tv_sec != prev_sec)
-		{
-			prev_sec =  tval.tv_sec;
-			h_offset_pos = abs(prev_sec%(hrate*2) - hrate)*offset/hrate;
-			v_offset_pos = abs(prev_sec%(vrate*2) - vrate)*offset/vrate;
-		}
 		//Write out the text
-		Translate(h_offset_pos, v_offset_pos);
 		DisplayBox db;
 		int pointSize;
 		std::string prefix;
-		if(pDS->DigitalLocal(db, pointSize, prefix))
+		if(pRS->DigitalLocal(db, pointSize, prefix))
 		{
 			std::string time_str = prefix + FormatTime(tm_local,tval.tv_usec);
 			db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
 		}
-		if(pDS->DigitalUTC(db, pointSize, prefix))
+		if(pRS->DigitalUTC(db, pointSize, prefix))
 		{
 			std::string time_str = prefix + FormatTime(tm_utc,tval.tv_usec);
 			db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
 		}
 		bool bLocal;
-		if(pDS->Date(db, bLocal, pointSize))
+		if(pRS->Date(db, bLocal, pointSize))
 		{
 			db.TextMidBottom(FormatDate(bLocal? tm_local: tm_utc),
 						FONT_PROP, pointSize);
@@ -974,22 +1061,22 @@ int main(int argc, char *argv[]) {
 
 		if(GPI_MODE == 1)
 		{
-			if(pDS->TD.nRows != 2)
-				pDS->TD.textSize = -1;
-			pDS->TD.nRows = 2;
-			pDS->TD.nCols_default = 1;
-			pDS->TD.nCols.empty();
+			if(pRS->TD.nRows != 2)
+				pRS->TD.textSize = -1;
+			pRS->TD.nRows = 2;
+			pRS->TD.nCols_default = 1;
+			pRS->TD.nCols.empty();
 			uint8_t gpis = pifacedigital_read_reg(INPUT,0);
 			uint8_t colour_weight = (gpis & 1) ? 50:255;
 			uint8_t fill_weight = (gpis & 1)? 50:255;
-			pDS->TD.displays[0][0].reset(
+			pRS->TD.displays[0][0].reset(
 				new SimpleTallyState(
 				    TallyColour(fill_weight, fill_weight, fill_weight),
 				    TallyColour(colour_weight, colour_weight*0.55,0),
 				    "Mic Live"));
 			colour_weight = (gpis & 2) ? 50:255;
 			fill_weight = (gpis & 2)? 50:255;
-			pDS->TD.displays[1][0].reset(
+			pRS->TD.displays[1][0].reset(
 				new SimpleTallyState(
 				    TallyColour(fill_weight, fill_weight, fill_weight),
 				    TallyColour(colour_weight, colour_weight*0.55,0),
@@ -997,7 +1084,7 @@ int main(int argc, char *argv[]) {
 		}
 
 		//Draw NTP sync status
-		db = pDS->StatusBox(pointSize);
+		db = pRS->StatusBox(pointSize);
 		Fill(255,255,255,1);
 		const char * sync_text;
 		if(ntp_state_data.status == 0)
@@ -1071,71 +1158,72 @@ int main(int argc, char *argv[]) {
 				tm_last_comms_good = tval.tv_sec;
 			}
 			//Stop showing stuff after 5 seconds of comms failed...
-			else if(pDS->TD.nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
+			else if(pRS->TD.nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
 			{
-				pDisplayState = pDS = boost::shared_ptr<DisplayState>(new DisplayState());
-				pDS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height);
+				clearRegions();
+				pRS = (*pGlobalRegions)[0];
+				pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height);
 				commsWidth = -1;
-				pDS->TD.textSize = -1;
+				pRS->TD.textSize = -1;
 			}
 		}
 		if(GPI_MODE)
 		{
-			profName = pDS->TD.sProfName;
-			if(pDS->TD.nRows > 0)
+			profName = pRS->TD.sProfName;
+			if(pRS->TD.nRows > 0)
 			{
-				DisplayBox db = pDS->TallyBox();
-				VGfloat row_height = (db.h)/((VGfloat)pDS->TD.nRows);
+				DisplayBox db = pRS->TallyBox();
+				VGfloat row_height = (db.h)/((VGfloat)pRS->TD.nRows);
 				VGfloat buffer = row_height*.02f;
-				VGfloat col_width_default = db.w/((VGfloat)pDS->TD.nCols_default);
-				if(pDS->TD.textSize < 0)
+				VGfloat col_width_default = db.w/((VGfloat)pRS->TD.nCols_default);
+				if(pRS->TD.textSize < 0)
 				{
-					pDS->TD.textSize = 0xFFFFFFF;
-					for(int row = 0; row < pDS->TD.nRows; row++)
+					pRS->TD.textSize = 0xFFFFFFF;
+					for(int row = 0; row < pRS->TD.nRows; row++)
 					{
-						int col_count = pDS->TD.nCols[row];
+						int col_count = pRS->TD.nCols[row];
 						VGfloat col_width = col_width_default;
 						if(col_count <= 0)
-							col_count = pDS->TD.nCols_default;
+							col_count = pRS->TD.nCols_default;
 						else
 							col_width = db.w/((VGfloat)col_count);
 						for(int col = 0; col < col_count; col++)
 						{
-							auto item = pDS->TD.displays[row][col];
+							auto item = pRS->TD.displays[row][col];
 							if(!item)
 								continue;
 							auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (item->Label(tval)? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
-							pDS->TD.textSize = std::min(pDS->TD.textSize, maxItemSize);
+							pRS->TD.textSize = std::min(pRS->TD.textSize, maxItemSize);
 						}
 					}
 				}
 				//float y_offset = height/10.0f;
-				for(int row = 0; row < pDS->TD.nRows; row++)
+				for(int row = 0; row < pRS->TD.nRows; row++)
 				{
 					VGfloat base_y = ((VGfloat)row)*row_height + db.y;
-					int col_count = pDS->TD.nCols[row];
+					int col_count = pRS->TD.nCols[row];
 					VGfloat col_width = col_width_default;
 					if(col_count <= 0)
-						col_count = pDS->TD.nCols_default;
+						col_count = pRS->TD.nCols_default;
 					else
 						col_width = db.w/((VGfloat)col_count);
 					for(int col = 0; col < col_count; col++)
 					{
-						auto curTally = pDS->TD.displays[row][col];
+						auto curTally = pRS->TD.displays[row][col];
 						if(!curTally)
 							continue;
 						DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
 						curTally->BG(tval)->Fill();
 						dbTally.Roundrect(row_height/10.0f);
 						curTally->FG(tval)->Fill();
-						dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), pDS->TD.textSize, curTally->Label(tval));
+						dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), pRS->TD.textSize, curTally->Label(tval));
 					}
 				}
 			}
 		}
 		//Done with displays, back to common code...
 		Fill(127, 127, 127, 1);
-		db = pDS->StatusBox(pointSize);
+		db = pRS->StatusBox(pointSize);
 		int quitSize = pointSize/1.5f;
 		Text(db.x, db.y, "Press Ctrl+C to quit", FONT_PROP, quitSize);
 		if(GPI_MODE == 2)
@@ -1152,12 +1240,16 @@ int main(int argc, char *argv[]) {
 		boost::shared_ptr<const std::map<int, VGfloat>> hours_y;
 		Fill(255,255,255,1);
 		int numbers;
-		if(pDS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
+		if(pRS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
 		{
 			//Right, now start drawing the clock
 
 			//Move to the centre of the clock
-			Translate(db.x + db.w/2.0f, db.y + db.h/2.0f);
+			VGfloat move_x = db.x + db.w/2.0f;
+			VGfloat move_y = db.y + db.h/2.0f;
+			Translate(move_x, move_y);
+			return_x += move_x;
+			return_y += move_y;
 
 			if(numbers)
 				//Write out hour labels around edge of clock
@@ -1249,6 +1341,10 @@ int main(int argc, char *argv[]) {
 				Rotate(-6);
 			}
 #endif
+			//Translate back to the origin...
+			Translate(-return_x, -return_y);
+
+		}
 		}
 		End();						   			// End the picture
 	}
