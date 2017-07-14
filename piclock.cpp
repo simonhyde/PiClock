@@ -631,9 +631,10 @@ public:
 		UPDATE_VAL(m_y,		2)
 		UPDATE_VAL(m_width,	3)
 		UPDATE_VAL(m_height,	4)
+#undef UPDATE_VAL
+		printf("Got location: %f,%f,%f,%f\n",m_x,m_y,m_width,m_height);
 		m_bRecalcReqd = m_bRecalcReqd || changed;
 		return changed;
-#undef UPDATE_VAL
 	}
 
 //Simple accessor methods
@@ -807,7 +808,7 @@ int handle_tcp_message(const std::string &message, client & conn)
 			std::string newCmd = pEnd;
 			cmd = newCmd;
 		}
-		else
+		else if(cmd != "SETREGIONCOUNT" && cmd != "SETPROFILE")
 		{
 			if(UpdateCount(pRegions, 1))
 			{
