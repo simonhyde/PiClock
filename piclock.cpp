@@ -284,6 +284,14 @@ public:
 	 :nRows(0), nCols_default(0), textSize(-1), sProfName()
 	{
 	}
+	void clear()
+	{
+		nRows = nCols_default = 0;
+		sProfName = "";
+		textSize = -1;
+		nCols.clear();
+		displays.clear();
+	}
 };
 
 class DisplayBox
@@ -494,8 +502,11 @@ public:
 	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, bool bStatus)
 	{
 		auto day = (m_bDateLocal? local:utc).tm_mday;
-		if(m_bRecalcReqd || lastDayOfMonth != day)
+		bool bBoxLandscape = width > height;
+		if(m_bRecalcReqd || lastDayOfMonth != day || prev_width != width || prev_height != height)
 		{
+			prev_width = width;
+			prev_height = height;
 			//Firstly the status text, which will always be in the bottom left corner
 			m_statusTextSize = std::min(width,height)/100.0f;
 			auto statusTextHeight = bStatus? TextHeight(FONT_PROP, m_statusTextSize) : 0.0f;
@@ -505,7 +516,7 @@ public:
 			if(m_bAnalogueClock)
 			{
 				auto dim = std::min(width, height);
-				if(globalState.Landscape())
+				if(bBoxLandscape)
 					textWidth -= dim;
 				//Always in the top right corner
 				m_boxAnalogue = DisplayBox(width - dim, height - dim, dim, dim);
@@ -532,7 +543,7 @@ public:
 			m_boxStatus = DisplayBox(0,0, textWidth, statusTextHeight*3.2f);
 			VGfloat textTop = height;
 #define textHeight (textTop - m_boxStatus.h)
-			if(!globalState.Landscape())
+			if(!bBoxLandscape)
 				textTop -= m_boxAnalogue.h;
 			VGfloat digitalColWidth = textWidth;
 			VGfloat digitalHeight = 0;
@@ -607,9 +618,7 @@ public:
 		UPDATE_VAL(m_bDigitalClockLocal,  4)
 		UPDATE_VAL(m_bDate,               5)
 		UPDATE_VAL(m_bDateLocal,          6)
-		bool bLandscape = globalState.Landscape();
-		UPDATE_VAL(bLandscape,            7)
-		globalState.SetLandscape(bLandscape);
+		//Skip Landscape parameter, this is now global, still transmitted by driver for legacy devices
 		bool numbersPresent = m_AnalogueNumbers != 0;
 		bool numbersOutside = m_AnalogueNumbers != 2;
 		UPDATE_VAL(numbersPresent,8);
@@ -632,7 +641,6 @@ public:
 		UPDATE_VAL(m_width,	3)
 		UPDATE_VAL(m_height,	4)
 #undef UPDATE_VAL
-		printf("Got location: %f,%f,%f,%f\n",m_x,m_y,m_width,m_height);
 		m_bRecalcReqd = m_bRecalcReqd || changed;
 		return changed;
 	}
@@ -738,6 +746,8 @@ private:
 	VGfloat m_y = 0.0f;
 	VGfloat m_width = 1.0;
 	VGfloat m_height = 1.0;
+	VGfloat prev_height = 0.0;
+	VGfloat prev_width = 0.0;
 };
 
 typedef std::map<int,boost::shared_ptr<RegionState>> RegionsMap_Base;
@@ -1063,6 +1073,7 @@ int main(int argc, char *argv[]) {
 		bool bFirst = true;
 
 		Start(iwidth, iheight);					// Start the picture
+		Background(0, 0, 0);					// Black background
 		VGfloat display_width = iwidth;
 		VGfloat display_height = iheight;
 		if(globalState.ScreenSaver())
@@ -1099,7 +1110,7 @@ int main(int argc, char *argv[]) {
 			VGfloat inner_width = display_width * pRS->width();
 
 			VGfloat return_x = display_width *pRS->x();
-			VGfloat return_y = display_width *pRS->y();
+			VGfloat return_y = display_height *pRS->y();
 			Translate(return_x, return_y);
 
 			if(pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, bFirst))
@@ -1108,9 +1119,9 @@ int main(int argc, char *argv[]) {
 				commsWidth = -1;
 				pRS->TD.textSize = -1;
 			}
-			Background(0, 0, 0);					// Black background
 			Fill(255, 255, 255, 1);					// white text
 			Stroke(255, 255, 255, 1);				// White strokes
+			StrokeWidth(0);//Don't draw strokes until we've moved onto the analogue clock
 
 			//Write out the text
 			DisplayBox db;
@@ -1159,86 +1170,93 @@ int main(int argc, char *argv[]) {
 
 			//Draw NTP sync status
 			db = pRS->StatusBox(pointSize);
-			Fill(255,255,255,1);
-			const char * sync_text;
-			if(ntp_state_data.status == 0)
+			if(db.w > 0.0f && db.h > 0.0f)
 			{
-				Fill(0,100,0,1);
-				sync_text = "Synchronised";
-			}
-			else
-			{
-				/* flash between red and purple once a second */
-				Fill(120,0,(tval.tv_sec %2)*120,1);
-				if(ntp_state_data.status == 1)
-					sync_text = "Synchronising..";
-				else
-					sync_text = "Unknown Synch!";
-			}
-			const char * header_text = "NTP-Derived Clock";
-			auto statusBoxLen = std::max(TextWidth(sync_text, FONT_PROP, pointSize),
-						     TextWidth(header_text, FONT_PROP, pointSize))*1.1f;
-			auto statusTextHeight = TextHeight(FONT_PROP, pointSize);
-			//Draw a box around NTP status
-			Rect(db.x + db.w - statusBoxLen, db.y, statusBoxLen, db.h);
-			Fill(200,200,200,1);
-			//2 bits of text
-			TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight *.5f, sync_text, FONT_PROP, pointSize);
-			TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight*1.8f, header_text, FONT_PROP, pointSize);
-
-			db.w -= statusBoxLen;
-
-			if(bFirst && GPI_MODE == 2)
-			{
-				//Draw comms status
-				if(commsWidth < 0)
+				Fill(255,255,255,1);
+				const char * sync_text;
+				if(ntp_state_data.status == 0)
 				{
-					commsWidth =
-						std::max(TextWidth("Comms OK", FONT_PROP, pointSize),
+					Fill(0,100,0,1);
+					sync_text = "Synchronised";
+				}
+				else
+				{
+					/* flash between red and purple once a second */
+					Fill(120,0,(tval.tv_sec %2)*120,1);
+					if(ntp_state_data.status == 1)
+						sync_text = "Synchronising..";
+					else
+						sync_text = "Unknown Synch!";
+				}
+				const char * header_text = "NTP-Derived Clock";
+				auto statusBoxLen = std::max(TextWidth(sync_text, FONT_PROP, pointSize),
+							     TextWidth(header_text, FONT_PROP, pointSize))*1.1f;
+				auto statusTextHeight = TextHeight(FONT_PROP, pointSize);
+				//Draw a box around NTP status
+				Rect(db.x + db.w - statusBoxLen, db.y, statusBoxLen, db.h);
+				Fill(200,200,200,1);
+				//2 bits of text
+				TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight *.5f, sync_text, FONT_PROP, pointSize);
+				TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight*1.8f, header_text, FONT_PROP, pointSize);
 
-							 TextWidth("Comms Failed", FONT_PROP, pointSize));
+				db.w -= statusBoxLen;
+
+				if(GPI_MODE == 2)
+				{
+					//Draw comms status
+					if(commsWidth < 0)
+					{
+						commsWidth =
+							std::max(TextWidth("Comms OK", FONT_PROP, pointSize),
+
+								 TextWidth("Comms Failed", FONT_PROP, pointSize));
+						for(unsigned int window = 0; window < tally_hosts.size(); window++)
+						{
+							char buf[512];
+							buf[511] = '\0';
+							snprintf(buf, 511, "Tally Server %d", window + 1);
+							commsWidth = std::max(commsWidth, TextWidth(buf, FONT_PROP, pointSize));
+						}
+						commsWidth *= 1.2f;
+						commsTextHeight = TextHeight(FONT_PROP, pointSize);
+					}
+					bool bAnyComms = false;
 					for(unsigned int window = 0; window < tally_hosts.size(); window++)
 					{
+						bAnyComms = bAnyComms || bComms[window];
+						if(bComms[window])
+							Fill(0,100,0,1);
+						else
+							Fill(190,0,0,1);
+						VGfloat base_x = db.x + db.w - commsWidth * (VGfloat)(tally_hosts.size()-window);
+						VGfloat base_y = db.y;
+						Rect( base_x, base_y, commsWidth, db.h);
+						Fill(200,200,200,1);
 						char buf[512];
 						buf[511] = '\0';
+						base_x += commsWidth*.5f;
 						snprintf(buf, 511, "Tally Server %d", window + 1);
-						commsWidth = std::max(commsWidth, TextWidth(buf, FONT_PROP, pointSize));
+						TextMid(base_x, base_y + commsTextHeight*1.8f, buf, FONT_PROP, pointSize);
+						snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
+						TextMid(base_x, base_y + commsTextHeight*0.4f, buf, FONT_PROP, pointSize);
 					}
-					commsWidth *= 1.2f;
-					commsTextHeight = TextHeight(FONT_PROP, pointSize);
-				}
-				bool bAnyComms = false;
-				for(unsigned int window = 0; window < tally_hosts.size(); window++)
-				{
-					bAnyComms = bAnyComms || bComms[window];
-					if(bComms[window])
-						Fill(0,100,0,1);
-					else
-						Fill(190,0,0,1);
-					VGfloat base_x = db.x + db.w - commsWidth * (VGfloat)(tally_hosts.size()-window);
-					VGfloat base_y = db.y;
-					Rect( base_x, base_y, commsWidth, db.h);
-					Fill(200,200,200,1);
-					char buf[512];
-					buf[511] = '\0';
-					base_x += commsWidth*.5f;
-					snprintf(buf, 511, "Tally Server %d", window + 1);
-					TextMid(base_x, base_y + commsTextHeight*1.8f, buf, FONT_PROP, pointSize);
-					snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
-					TextMid(base_x, base_y + commsTextHeight*0.4f, buf, FONT_PROP, pointSize);
-				}
-				if(bAnyComms)
-				{
-					tm_last_comms_good = tval.tv_sec;
-				}
-				//Stop showing stuff after 5 seconds of comms failed...
-				else if(pRS->TD.nRows > 0 && tm_last_comms_good < tval.tv_sec - 5)
-				{
-					clearRegions();
-					pRS = (*pGlobalRegions)[0];
-					pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, true);
-					commsWidth = -1;
-					pRS->TD.textSize = -1;
+					if(bAnyComms)
+					{
+						tm_last_comms_good = tval.tv_sec;
+					}
+					//Stop showing stuff after 5 seconds of comms failed...
+					else if(tm_last_comms_good < tval.tv_sec - 5)
+					{
+						//clearRegions();
+						auto allRegions = pGlobalRegions;
+						for(auto & reg: *allRegions)
+						{
+							boost::shared_ptr<RegionState> newRS(new RegionState(*(reg.second)));
+							newRS->TD.clear();
+							reg.second = newRS;
+						}
+						pGlobalRegions = allRegions;
+					}
 				}
 			}
 			if(GPI_MODE)
@@ -1296,24 +1314,27 @@ int main(int argc, char *argv[]) {
 				}
 			}
 			//Done with displays, back to common code...
-			Fill(127, 127, 127, 1);
 			db = pRS->StatusBox(pointSize);
-			int quitSize = pointSize/1.5f;
-			Text(db.x, db.y, "Press Ctrl+C to quit", FONT_PROP, quitSize);
-			if(GPI_MODE == 2)
+			if(db.w > 0.0f && db.h > 0.0f)
 			{
-				char buf[8192];
-				buf[sizeof(buf)-1] = '\0';
-				if(profName.empty())
-					snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
-				else
-					snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
-				Text(db.x, db.y + TextHeight(FONT_PROP,quitSize)*1.5f, buf, FONT_PROP, pointSize);
+				Fill(127, 127, 127, 1);
+				int quitSize = pointSize/1.5f;
+				Text(db.x, db.y, "Press Ctrl+C to quit", FONT_PROP, quitSize);
+				if(GPI_MODE == 2)
+				{
+					char buf[8192];
+					buf[sizeof(buf)-1] = '\0';
+					if(profName.empty())
+						snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
+					else
+						snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
+					Text(db.x, db.y + TextHeight(FONT_PROP,quitSize)*1.5f, buf, FONT_PROP, pointSize);
+				}
 			}
-			boost::shared_ptr<const std::map<int, VGfloat>> hours_x;
-			boost::shared_ptr<const std::map<int, VGfloat>> hours_y;
 			Fill(255,255,255,1);
 			int numbers;
+			boost::shared_ptr<const std::map<int, VGfloat>> hours_x;
+			boost::shared_ptr<const std::map<int, VGfloat>> hours_y;
 			if(pRS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
 			{
 				//Right, now start drawing the clock
@@ -1321,6 +1342,7 @@ int main(int argc, char *argv[]) {
 				//Move to the centre of the clock
 				VGfloat move_x = db.x + db.w/2.0f;
 				VGfloat move_y = db.y + db.h/2.0f;
+				
 				Translate(move_x, move_y);
 				return_x += move_x;
 				return_y += move_y;
@@ -1336,17 +1358,18 @@ int main(int argc, char *argv[]) {
 				//Go around drawing dashes around edge of clock
 				StrokeWidth(db.w/100.0f);
 				VGfloat start, end_short, end_long;
+				VGfloat min_dim = std::min(db.h,db.w);
 				if(numbers == 1)
 				{
-					start = db.h *7.5f/20.0f;
-					end_short = db.h *6.7f/20.0f;
-					end_long = db.h *6.3f/20.0f;
+					start = min_dim *7.5f/20.0f;
+					end_short = min_dim *6.7f/20.0f;
+					end_long = min_dim *6.3f/20.0f;
 				}
 				else
 				{
-					start = db.h *9.5f/20.0f;
-					end_short = db.h *8.8f/20.0f;
-					end_long = db.h *8.4f/20.0f;
+					start = min_dim *9.5f/20.0f;
+					end_short = min_dim *8.8f/20.0f;
+					end_long = min_dim *8.4f/20.0f;
 				}
 #ifndef NO_COLOUR_CHANGE
 				Stroke(255,0,0,1);
@@ -1391,12 +1414,12 @@ int main(int argc, char *argv[]) {
 				VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
 				VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
 				Rotate(hour_rotation);
-				Line(0,0,0,db.h/4.0f); /* half-length hour hand */
+				Line(0,0,0,min_dim/4.0f); /* half-length hour hand */
 				Rotate(min_rotation - hour_rotation);
-				Line(0,0,0,db.h/2.0f); /* minute hand */
+				Line(0,0,0,min_dim/2.0f); /* minute hand */
 				Rotate(sec_rotation - min_rotation);
 				Stroke(255,0,0,1);
-				Line(0,-db.h/10.0f,0,db.h/2.0f); /* second hand, with overhanging tail */
+				Line(0,-db.h/10.0f,0,min_dim/2.0f); /* second hand, with overhanging tail */
 				//Draw circle in centre
 				Fill(255,0,0,1);
 				Circle(0,0,db.w/150.0f);
@@ -1415,12 +1438,12 @@ int main(int argc, char *argv[]) {
 					Rotate(-6);
 				}
 #endif
-				//Translate back to the origin...
-				Translate(-return_x, -return_y);
-				if(bFirst)
-					bFirst = false;
 
 			}
+			//Translate back to the origin...
+			if(return_x != 0.0 || return_y != 0.0)
+				Translate(-return_x, -return_y);
+			bFirst = false;
 		}
 		End();						   			// End the picture
 	}
