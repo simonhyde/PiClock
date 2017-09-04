@@ -499,7 +499,7 @@ public:
 			other.m_bDate                 == m_bDate                 &&
 			other.m_bDateLocal            == m_bDateLocal;
 	}
-	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, bool bStatus)
+	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus)
 	{
 		auto day = (m_bDateLocal? local:utc).tm_mday;
 		bool bBoxLandscape = width > height;
@@ -508,7 +508,7 @@ public:
 			prev_width = width;
 			prev_height = height;
 			//Firstly the status text, which will always be in the bottom left corner
-			m_statusTextSize = std::min(width,height)/100.0f;
+			m_statusTextSize = std::min(displayWidth,displayHeight)/130.0f;
 			auto statusTextHeight = bStatus? TextHeight(FONT_PROP, m_statusTextSize) : 0.0f;
 			//Start off by assuming the text is the full width, this will change if we have an analogue clock and we're in landscape
 			auto textWidth = width;
@@ -1113,7 +1113,7 @@ int main(int argc, char *argv[]) {
 			VGfloat return_y = display_height *pRS->y();
 			Translate(return_x, return_y);
 
-			if(pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, bFirst))
+			if(pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst))
 			{
 				//Force recalc...
 				commsWidth = -1;
