@@ -299,10 +299,10 @@ class DisplayBox
 public:
 	VGfloat x,y,w,h;
 	DisplayBox()
-		:x(0),y(0),w(0),h(0)
+		:x(0),y(0),w(0),h(0),m_corner(0)
 	{}
 	DisplayBox(VGfloat _x, VGfloat _y, VGfloat _w, VGfloat _h)
-		:x(_x),y(_y),w(_w),h(_h)
+		:x(_x),y(_y),w(_w),h(_h),m_corner(0)
 	{
 	}
 	VGfloat mid_x()
@@ -319,9 +319,10 @@ public:
 		VGfloat text_y = mid_y() - text_height *.33f;
 		if(label)
 		{
-			auto label_y = y + h - TextHeight(FONT_PROP, pointSize/3);
-			::Text(x + w*.05f, label_y,
-				label->c_str(), FONT_PROP, pointSize/3);
+			auto labelHeight = TextHeight(FONT_PROP, pointSize/3);
+			auto label_y = y + h - labelHeight;
+			::TextClip(x + m_corner, label_y,
+				label->c_str(), FONT_PROP, pointSize/3, w - m_corner*2);
 			if(text_y + text_height > label_y)
 			{
 				text_y = label_y - text_height*1.05f;
@@ -343,16 +344,20 @@ public:
 	}
 	void Roundrect(VGfloat corner)
 	{
+		m_corner = corner;
 		::Roundrect(x, y, w, h, corner, corner);
 	}
 	void Rect()
 	{
+		m_corner = 0;
 		::Rect(x,y,w,h);
 	}
 	void Zero()
 	{
-		x = y = w = h = 0;
+		m_corner = x = y = w = h = 0;
 	}
+private:
+	VGfloat m_corner;
 };
 
 int MaxPointSize(VGfloat width, VGfloat height, const std::string & text, const Fontinfo & f)
