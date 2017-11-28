@@ -115,6 +115,7 @@ public:
 	virtual boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const = 0;
 	virtual boost::shared_ptr<std::string> Text(const struct timeval &curTime) const = 0;
 	virtual boost::shared_ptr<std::string> Label(const struct timeval &curTime) const = 0;
+	virtual boost::shared_ptr<TallyState>  SetLabel(const std::string &lbl) const = 0;
 	virtual bool IsMonoSpaced() const = 0;
 	virtual bool Equals(boost::shared_ptr<TallyState> other) const = 0;
 };
@@ -136,8 +137,14 @@ public:
 	}
 	boost::shared_ptr<std::string> Label(const struct timeval &curTime) const override
 	{
-		//No label, empty pointer
-		return boost::shared_ptr<std::string>();
+		return m_label;
+	}
+	boost::shared_ptr<TallyState> SetLabel(const std::string & label) const override
+	{
+		boost::shared_ptr<TallyState> ret(new SimpleTallyState(*this));
+		auto derived = dynamic_cast<SimpleTallyState *>(ret.get());
+		derived->m_label = boost::shared_ptr<std::string>(new std::string(label));
+		return ret;
 	}
 	bool IsMonoSpaced() const override
 	{
@@ -158,14 +165,33 @@ public:
 	}
 
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text)), m_label(new std::string())
 	{}
 	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text)), m_label(new std::string())
 	{}
+
+	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text, const boost::shared_ptr<TallyState> &_old)
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	{
+		auto derived = dynamic_cast<SimpleTallyState *>(_old.get());
+		if(derived != NULL)
+			m_label = derived->m_label;
+		else
+			m_label.reset(new std::string());
+	}
+	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text, const boost::shared_ptr<TallyState> &_old)
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	{
+		auto derived = dynamic_cast<SimpleTallyState *>(_old.get());
+		if(derived != NULL)
+			m_label = derived->m_label;
+		else
+			m_label.reset(new std::string());
+	}
 protected:
 	boost::shared_ptr<TallyColour> m_FG, m_BG;
-	boost::shared_ptr<std::string> m_text;
+	boost::shared_ptr<std::string> m_text, m_label;
 };
 
 class CountdownClock : public SimpleTallyState
@@ -322,7 +348,7 @@ public:
 			auto labelHeight = TextHeight(FONT_PROP, pointSize/3);
 			auto label_y = y + h - labelHeight;
 			::TextClip(x + m_corner, label_y,
-				label->c_str(), FONT_PROP, pointSize/3, w - m_corner*2);
+				label->c_str(), FONT_PROP, pointSize/3, w - m_corner, '.',3);
 			if(text_y + text_height > label_y)
 			{
 				text_y = label_y - text_height*1.05f;
@@ -896,7 +922,8 @@ int handle_tcp_message(const std::string &message, client & conn)
 			{
 				pNew->TD.displays[row][col].reset(new SimpleTallyState(get_arg(message,3),
 							  get_arg(message,4),
-							  get_arg(message,5,false)));
+							  get_arg(message,5,false),
+							  pOld->TD.displays[row][col]));
 			}
 			bChanged = bChanged || (!pNew->TD.displays[row][col]->Equals(pOld->TD.displays[row][col]));
 			struct timeval tvTmp;
@@ -904,6 +931,16 @@ int handle_tcp_message(const std::string &message, client & conn)
 			bSizeChanged = bSizeChanged || !(pOld->TD.displays[row][col])
 				      || pNew->TD.displays[row][col]->Text(tvTmp) != pOld->TD.displays[row][col]->Text(tvTmp)
 				      || pNew->TD.displays[row][col]->IsMonoSpaced() != pOld->TD.displays[row][col]->IsMonoSpaced();
+		}
+		else if(cmd == "SETLABEL")
+		{
+			int row = get_arg_int(message,1);
+			int col = get_arg_int(message,2);
+			if(pNew->TD.displays[row][col])
+			{
+				pNew->TD.displays[row][col] = pNew->TD.displays[row][col]->SetLabel(get_arg(message,3,false));
+				bChanged = true;
+			}
 		}
 		else if(cmd == "SETPROFILE")
 		{

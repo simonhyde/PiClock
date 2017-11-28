@@ -1,2 +1,3 @@
 ntpstat.o
 piclock
+piclock.o
