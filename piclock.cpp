@@ -143,7 +143,10 @@ public:
 	{
 		boost::shared_ptr<TallyState> ret(new SimpleTallyState(*this));
 		auto derived = dynamic_cast<SimpleTallyState *>(ret.get());
-		derived->m_label = boost::shared_ptr<std::string>(new std::string(label));
+		if(label.size() > 0)
+			derived->m_label = boost::shared_ptr<std::string>(new std::string(label));
+		else
+			derived->m_label = boost::shared_ptr<std::string>();
 		return ret;
 	}
 	bool IsMonoSpaced() const override
