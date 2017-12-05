@@ -181,7 +181,7 @@ public:
 		if(derived != NULL)
 			m_label = derived->m_label;
 		else
-			m_label.reset(new std::string());
+			m_label.reset();
 	}
 	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text, const boost::shared_ptr<TallyState> &_old)
 	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
@@ -190,7 +190,7 @@ public:
 		if(derived != NULL)
 			m_label = derived->m_label;
 		else
-			m_label.reset(new std::string());
+			m_label.reset();
 	}
 protected:
 	boost::shared_ptr<TallyColour> m_FG, m_BG;
