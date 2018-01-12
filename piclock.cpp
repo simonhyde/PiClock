@@ -290,12 +290,10 @@ private:
 	static time_t SecsLeft(const timeval & current, const timeval & target)
 	{
 		auto left = TimeLeft(current,target);
-		//Round to nearest half second for now...
+		//We want equivalent of ceil()
 		auto ret = left.tv_sec;
-		if(left.tv_usec >= 500000)
+		if(left.tv_usec > 0)
 			ret += 1;
-		else if(left.tv_usec <= -500000)
-			ret -= 1;
 		return ret;
 	}
 };
