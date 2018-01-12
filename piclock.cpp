@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <boost/shared_ptr.hpp>
+#include <boost/make_shared.hpp>
 #include <boost/program_options.hpp>
 #include <netdb.h>
 #include <time.h>
@@ -1293,7 +1294,7 @@ int main(int argc, char *argv[]) {
 					else if(tm_last_comms_good < tval.tv_sec - 5)
 					{
 						//clearRegions();
-						auto allRegions = pGlobalRegions;
+						auto allRegions = boost::make_shared<RegionsMap_Base>(*pGlobalRegions);
 						for(auto & reg: *allRegions)
 						{
 							boost::shared_ptr<RegionState> newRS(new RegionState(*(reg.second)));
