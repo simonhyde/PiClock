@@ -12,8 +12,7 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <boost/shared_ptr.hpp>
-#include <boost/make_shared.hpp>
+#include <memory>
 #include <boost/program_options.hpp>
 #include <netdb.h>
 #include <time.h>
@@ -112,42 +111,42 @@ protected:
 class TallyState
 {
 public:
-	virtual boost::shared_ptr<TallyColour> FG(const struct timeval &curTime) const = 0;
-	virtual boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const = 0;
-	virtual boost::shared_ptr<std::string> Text(const struct timeval &curTime) const = 0;
-	virtual boost::shared_ptr<std::string> Label(const struct timeval &curTime) const = 0;
-	virtual boost::shared_ptr<TallyState>  SetLabel(const std::string &lbl) const = 0;
+	virtual std::shared_ptr<TallyColour> FG(const struct timeval &curTime) const = 0;
+	virtual std::shared_ptr<TallyColour> BG(const struct timeval &curTime) const = 0;
+	virtual std::shared_ptr<std::string> Text(const struct timeval &curTime) const = 0;
+	virtual std::shared_ptr<std::string> Label(const struct timeval &curTime) const = 0;
+	virtual std::shared_ptr<TallyState>  SetLabel(const std::string &lbl) const = 0;
 	virtual bool IsMonoSpaced() const = 0;
-	virtual bool Equals(boost::shared_ptr<TallyState> other) const = 0;
+	virtual bool Equals(std::shared_ptr<TallyState> other) const = 0;
 };
 
 class SimpleTallyState  :  public TallyState
 {
 public:
-	boost::shared_ptr<TallyColour> FG(const struct timeval &curTime) const override
+	std::shared_ptr<TallyColour> FG(const struct timeval &curTime) const override
 	{
 		return m_FG;
 	}
-	boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const override
+	std::shared_ptr<TallyColour> BG(const struct timeval &curTime) const override
 	{
 		return m_BG;
 	}
-	boost::shared_ptr<std::string> Text(const struct timeval &curTime) const override
+	std::shared_ptr<std::string> Text(const struct timeval &curTime) const override
 	{
 		return m_text;
 	}
-	boost::shared_ptr<std::string> Label(const struct timeval &curTime) const override
+	std::shared_ptr<std::string> Label(const struct timeval &curTime) const override
 	{
 		return m_label;
 	}
-	boost::shared_ptr<TallyState> SetLabel(const std::string & label) const override
+	std::shared_ptr<TallyState> SetLabel(const std::string & label) const override
 	{
-		boost::shared_ptr<TallyState> ret(new SimpleTallyState(*this));
+		std::shared_ptr<TallyState> ret = std::make_shared<SimpleTallyState>(*this);
 		auto derived = dynamic_cast<SimpleTallyState *>(ret.get());
 		if(label.size() > 0)
-			derived->m_label = boost::shared_ptr<std::string>(new std::string(label));
+			derived->m_label = std::shared_ptr<std::string>(new std::string(label));
 		else
-			derived->m_label = boost::shared_ptr<std::string>();
+			derived->m_label = std::shared_ptr<std::string>();
 		return ret;
 	}
 	bool IsMonoSpaced() const override
@@ -155,7 +154,7 @@ public:
 		return false;
 	}
 
-	bool Equals(boost::shared_ptr<TallyState> other) const override
+	bool Equals(std::shared_ptr<TallyState> other) const override
 	{
 		if(!other)
 			return false;
@@ -175,27 +174,27 @@ public:
 	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text)), m_label(new std::string())
 	{}
 
-	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text, const boost::shared_ptr<TallyState> &_old)
+	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old)
 	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
 	{
 		auto derived = dynamic_cast<SimpleTallyState *>(_old.get());
 		if(derived != NULL)
 			m_label = derived->m_label;
 		else
-			m_label.reset();
+			m_label = std::make_shared<std::string>();
 	}
-	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text, const boost::shared_ptr<TallyState> &_old)
+	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old)
 	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
 	{
 		auto derived = dynamic_cast<SimpleTallyState *>(_old.get());
 		if(derived != NULL)
 			m_label = derived->m_label;
 		else
-			m_label.reset();
+			m_label = std::make_shared<std::string>();
 	}
 protected:
-	boost::shared_ptr<TallyColour> m_FG, m_BG;
-	boost::shared_ptr<std::string> m_text, m_label;
+	std::shared_ptr<TallyColour> m_FG, m_BG;
+	std::shared_ptr<std::string> m_text, m_label;
 };
 
 class CountdownClock : public SimpleTallyState
@@ -212,19 +211,19 @@ public:
 		}
 		return false;
 	}
-	boost::shared_ptr<TallyColour> FG(const struct timeval &curTime) const override
+	std::shared_ptr<TallyColour> FG(const struct timeval &curTime) const override
 	{
 		if(Invert(curTime))
 			return SimpleTallyState::BG(curTime);
 		return SimpleTallyState::FG(curTime);
 	}
-	boost::shared_ptr<TallyColour> BG(const struct timeval &curTime) const override
+	std::shared_ptr<TallyColour> BG(const struct timeval &curTime) const override
 	{
 		if(Invert(curTime))
 			return SimpleTallyState::FG(curTime);
 		return SimpleTallyState::BG(curTime);
 	}
-	boost::shared_ptr<std::string> Text(const struct timeval &curTime) const override
+	std::shared_ptr<std::string> Text(const struct timeval &curTime) const override
 	{
 		time_t secs = SecsLeft(curTime,m_target);
 		char buf[256];
@@ -232,9 +231,9 @@ public:
 		secs = std::abs(secs);
 		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld",
 			 negChar, secs/3600, (secs/60)%60, secs %60);
-		return boost::shared_ptr<std::string>(new std::string(buf));
+		return std::shared_ptr<std::string>(new std::string(buf));
 	}
-	boost::shared_ptr<std::string> Label(const struct timeval &curTime) const override
+	std::shared_ptr<std::string> Label(const struct timeval &curTime) const override
 	{
 		return SimpleTallyState::Text(curTime);
 	}
@@ -243,7 +242,7 @@ public:
 		return true;
 	}
 
-	bool Equals(boost::shared_ptr<TallyState> other) const override
+	bool Equals(std::shared_ptr<TallyState> other) const override
 	{
 		if(!other)
 			return false;
@@ -261,15 +260,15 @@ public:
 			       && *m_pFlashLimit == *(derived->m_pFlashLimit)));
 	}
 
-	CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const struct timeval & _target, boost::shared_ptr<long long> pflash)
+	CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const struct timeval & _target, std::shared_ptr<long long> pflash)
 	 :SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash)
 	{}
-	CountdownClock(const TallyColour & fg, const TallyColour &bg, const std::string &_label, const struct timeval &_target, boost::shared_ptr<long long> pflash)
+	CountdownClock(const TallyColour & fg, const TallyColour &bg, const std::string &_label, const struct timeval &_target, std::shared_ptr<long long> pflash)
 	 :SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash)
 	{}
 private:
 	struct timeval m_target;
-	boost::shared_ptr<long long> m_pFlashLimit;
+	std::shared_ptr<long long> m_pFlashLimit;
 	static struct timeval TimeLeft(const timeval & current, const timeval & target)
 	{
 		struct timeval ret;
@@ -307,7 +306,7 @@ public:
 	int textSize;
 	std::map<int,int> nCols;
 	std::string sProfName;
-	std::map<int,std::map<int,boost::shared_ptr<TallyState> > > displays;
+	std::map<int,std::map<int, std::shared_ptr<TallyState> > > displays;
 	TallyDisplays()
 	 :nRows(0), nCols_default(0), textSize(-1), sProfName()
 	{
@@ -341,7 +340,7 @@ public:
 	{
 		return y + h/2.0f;
 	}
-	void TextMid(const std::string & str, const Fontinfo & font, const int pointSize, boost::shared_ptr<std::string> label = boost::shared_ptr<std::string>())
+	void TextMid(const std::string & str, const Fontinfo & font, const int pointSize, std::shared_ptr<std::string> label = std::shared_ptr<std::string>())
 	{
 		auto text_height = TextHeight(font, pointSize);
 		VGfloat text_y = mid_y() - text_height *.33f;
@@ -359,7 +358,7 @@ public:
 				
 		::TextMid(mid_x(), text_y, str.c_str(), font, pointSize);
 	}
-	void TextMidBottom(const std::string & str, const Fontinfo & font, const int pointSize, boost::shared_ptr<std::string> label = boost::shared_ptr<std::string>())
+	void TextMidBottom(const std::string & str, const Fontinfo & font, const int pointSize, std::shared_ptr<std::string> label = std::shared_ptr<std::string>())
 	{
 		if(label)
 		{
@@ -458,12 +457,12 @@ VGfloat get_arg_f(const std::string &input, int index, bool bTerminated = true)
 {
 	return std::stod(get_arg(input, index, bTerminated));
 }
-boost::shared_ptr<long long> get_arg_pll(const std::string &input, int index, bool bTerminated = true)
+std::shared_ptr<long long> get_arg_pll(const std::string &input, int index, bool bTerminated = true)
 {
 	auto str = get_arg(input, index, bTerminated);
 	if(str.length() <= 0)
-		return boost::shared_ptr<long long>();
-	return boost::shared_ptr<long long>(new long long(std::stoull(str)));
+		return std::shared_ptr<long long>();
+	return std::shared_ptr<long long>(new long long(std::stoull(str)));
 }
 
 
@@ -519,7 +518,7 @@ public:
 	: m_bRecalcReqd(true), m_bAnalogueClock(true),m_bAnalogueClockLocal(true),m_bDigitalClockUTC(false),m_bDigitalClockLocal(true),m_bDate(true), m_bDateLocal(true), m_AnalogueNumbers(1)
 	{}
 
-	bool LayoutEqual(boost::shared_ptr<RegionState> pOther) const
+	bool LayoutEqual(std::shared_ptr<RegionState> pOther) const
 	{
 		return pOther && LayoutEqual(*pOther);
 	}
@@ -683,7 +682,7 @@ public:
 	{
 		return m_bRotationReqd;
 	}
-	bool AnalogueClock(DisplayBox & dBox, bool &bLocal, boost::shared_ptr<const std::map<int, VGfloat> > &hours_x, boost::shared_ptr<const std::map<int, VGfloat> > &hours_y, int &numbers)
+	bool AnalogueClock(DisplayBox & dBox, bool &bLocal, std::shared_ptr<const std::map<int, VGfloat> > &hours_x, std::shared_ptr<const std::map<int, VGfloat> > &hours_y, int &numbers)
 	{
 		dBox = m_boxAnalogue;
 		bLocal = m_bAnalogueClockLocal;
@@ -763,8 +762,8 @@ private:
 	int m_digitalPointSize;
 	int m_datePointSize;
 	int lastDayOfMonth = -1;
-	boost::shared_ptr<std::map<int, VGfloat>> m_hours_x;
-	boost::shared_ptr<std::map<int, VGfloat>> m_hours_y;
+	std::shared_ptr<std::map<int, VGfloat>> m_hours_x;
+	std::shared_ptr<std::map<int, VGfloat>> m_hours_y;
 
 	bool m_bAnalogueClock;
 	bool m_bAnalogueClockLocal;
@@ -783,8 +782,8 @@ private:
 	VGfloat prev_width = 0.0;
 };
 
-typedef std::map<int,boost::shared_ptr<RegionState>> RegionsMap_Base;
-typedef boost::shared_ptr<RegionsMap_Base> RegionsMap;
+typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap_Base;
+typedef std::shared_ptr<RegionsMap_Base> RegionsMap;
 
 RegionsMap pGlobalRegions(new RegionsMap_Base());
 
@@ -830,7 +829,7 @@ int handle_tcp_message(const std::string &message, client & conn)
 		conn.write_line(to_write, boost::posix_time::time_duration(0,0,10),'\r');
 		return 3;
 	}
-	RegionsMap pRegions(new RegionsMap_Base(*pGlobalRegions));
+	RegionsMap pRegions(new RegionsMap_Base(*atomic_load(&pGlobalRegions)));
 	
 	if(cmd == "SETGLOBAL")
 	{
@@ -862,10 +861,10 @@ int handle_tcp_message(const std::string &message, client & conn)
 		}
 		if(!(*pRegions)[regionIndex])
 		{
-			(*pRegions)[regionIndex] = boost::shared_ptr<RegionState>(new RegionState());
+			(*pRegions)[regionIndex] = std::make_shared<RegionState>();
 		}
-		boost::shared_ptr<RegionState> pOld = (*pRegions)[regionIndex];
-		boost::shared_ptr<RegionState> pNew = boost::shared_ptr<RegionState>(new RegionState(*pOld));
+		std::shared_ptr<RegionState> pOld = (*pRegions)[regionIndex];
+		std::shared_ptr<RegionState> pNew = std::make_shared<RegionState>(*pOld);
 
 		if(bMaxRegion && (pNew->x() != 0.0f || pNew->y() != 0.0f || pNew->width() != 1.0f || pNew->height() != 1.0f))
 		{
@@ -914,18 +913,20 @@ int handle_tcp_message(const std::string &message, client & conn)
 				target.tv_sec = get_arg_ll(message,5);
 				target.tv_usec = get_arg_l(message,6);
 
-				pNew->TD.displays[row][col].reset(new CountdownClock(get_arg(message,3),
+				pNew->TD.displays[row][col] = std::make_shared<CountdownClock>(
+							  get_arg(message,3),
 							  get_arg(message,4),
 							  get_arg(message,8,false),
 							  target,
-							  get_arg_pll(message,7)));
+							  get_arg_pll(message,7));
 			}
 			else
 			{
-				pNew->TD.displays[row][col].reset(new SimpleTallyState(get_arg(message,3),
+				pNew->TD.displays[row][col] = std::make_shared<SimpleTallyState>(
+							  get_arg(message,3),
 							  get_arg(message,4),
 							  get_arg(message,5,false),
-							  pOld->TD.displays[row][col]));
+							  pOld->TD.displays[row][col]);
 			}
 			bChanged = bChanged || (!pNew->TD.displays[row][col]->Equals(pOld->TD.displays[row][col]));
 			struct timeval tvTmp;
@@ -965,7 +966,7 @@ int handle_tcp_message(const std::string &message, client & conn)
 			if(bSizeChanged)
 				pNew->TD.textSize = -1;
 			(*pRegions)[regionIndex] = pNew;
-			pGlobalRegions = pRegions;
+			atomic_store(&pGlobalRegions,pRegions);
 		}
 	}
 	conn.write_line("ACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
@@ -1059,9 +1060,9 @@ void read_settings(const std::string & filename,
 
 void clearRegions()
 {
-	RegionsMap pRegions(new std::map<int,boost::shared_ptr<RegionState>>());
-	(*pRegions)[0] = boost::shared_ptr<RegionState>(new RegionState());
-	pGlobalRegions = pRegions;
+	RegionsMap pRegions(new std::map<int,std::shared_ptr<RegionState>>());
+	(*pRegions)[0] = std::make_shared<RegionState>();
+	atomic_store(&pGlobalRegions, pRegions);
 }
 
 int main(int argc, char *argv[]) {
@@ -1110,7 +1111,7 @@ int main(int argc, char *argv[]) {
 	while(1)
 	{
 		//Copy reference to current set of states, this then shouldn't change whilst we're processing it...
-		RegionsMap pRegions = pGlobalRegions;
+		RegionsMap pRegions = atomic_load(&pGlobalRegions);
 		gettimeofday(&tval, NULL);
 		localtime_r(&tval.tv_sec, &tm_local);
 		gmtime_r(&tval.tv_sec, &tm_utc);
@@ -1148,7 +1149,7 @@ int main(int argc, char *argv[]) {
 		{
 			std::string profName;
 			int i;
-			boost::shared_ptr<RegionState> pRS = region.second;
+			std::shared_ptr<RegionState> pRS = region.second;
 
 			VGfloat inner_height = display_height * pRS->height();
 			VGfloat inner_width = display_width * pRS->width();
@@ -1198,18 +1199,16 @@ int main(int argc, char *argv[]) {
 				uint8_t gpis = pifacedigital_read_reg(INPUT,0);
 				uint8_t colour_weight = (gpis & 1) ? 50:255;
 				uint8_t fill_weight = (gpis & 1)? 50:255;
-				pRS->TD.displays[0][0].reset(
-					new SimpleTallyState(
+				pRS->TD.displays[0][0] = std::make_shared<SimpleTallyState>(
 					    TallyColour(fill_weight, fill_weight, fill_weight),
 					    TallyColour(colour_weight, colour_weight*0.55,0),
-					    "Mic Live"));
+					    "Mic Live");
 				colour_weight = (gpis & 2) ? 50:255;
 				fill_weight = (gpis & 2)? 50:255;
-				pRS->TD.displays[1][0].reset(
-					new SimpleTallyState(
+				pRS->TD.displays[1][0] = std::make_shared<SimpleTallyState>(
 					    TallyColour(fill_weight, fill_weight, fill_weight),
 					    TallyColour(colour_weight, colour_weight*0.55,0),
-					    "On Air"));
+					    "On Air");
 			}
 
 			//Draw NTP sync status
@@ -1292,14 +1291,14 @@ int main(int argc, char *argv[]) {
 					else if(tm_last_comms_good < tval.tv_sec - 5)
 					{
 						//clearRegions();
-						auto allRegions = boost::make_shared<RegionsMap_Base>(*pGlobalRegions);
+						auto allRegions = std::make_shared<RegionsMap_Base>(*atomic_load(&pGlobalRegions));
 						for(auto & reg: *allRegions)
 						{
-							boost::shared_ptr<RegionState> newRS(new RegionState(*(reg.second)));
+							std::shared_ptr<RegionState> newRS(new RegionState(*(reg.second)));
 							newRS->TD.clear();
 							reg.second = newRS;
 						}
-						pGlobalRegions = allRegions;
+						atomic_store(&pGlobalRegions,allRegions);
 					}
 				}
 			}
@@ -1377,8 +1376,8 @@ int main(int argc, char *argv[]) {
 			}
 			Fill(255,255,255,1);
 			int numbers;
-			boost::shared_ptr<const std::map<int, VGfloat>> hours_x;
-			boost::shared_ptr<const std::map<int, VGfloat>> hours_y;
+			std::shared_ptr<const std::map<int, VGfloat>> hours_x;
+			std::shared_ptr<const std::map<int, VGfloat>> hours_y;
 			if(pRS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
 			{
 				//Right, now start drawing the clock
