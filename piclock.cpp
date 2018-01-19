@@ -44,6 +44,12 @@ std::string TALLY_SERVICE("6254");
 std::string TALLY_SECRET("SharedSecretGoesHere");
 std::vector<std::string> tally_hosts;
 
+class RegionState;
+typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap_Base;
+typedef std::shared_ptr<RegionsMap_Base> RegionsMap;
+
+RegionsMap pGlobalRegions(new RegionsMap_Base());
+
 #define FONT_PROP	(SerifTypeface)
 #define FONT_HOURS	(SansTypeface)
 #define FONT_MONO	(MonoTypeface)
@@ -471,7 +477,6 @@ bool get_arg_bool(const std::string &input, int index, bool bTerminated = true)
 	return get_arg_int(input, index, bTerminated) != 0;
 }
 
-
 class OverallState
 {
 public:
@@ -509,6 +514,7 @@ private:
 };
 
 OverallState globalState;
+
 
 class RegionState
 {
@@ -585,7 +591,7 @@ public:
 #if FRAMES
 				clockStr = clockStr + ":99";
 #endif
-				if(m_bDigitalClockUTC && m_bDigitalClockLocal)
+				if(DigitalClockPrefix())
 					clockStr = "TOD " + clockStr;
 				m_digitalPointSize = MaxPointSize(digitalColWidth*.95f, textHeight, clockStr, FONT_MONO);
 				digitalHeight = TextHeight(FONT_MONO, m_digitalPointSize)*1.1f;
@@ -658,7 +664,6 @@ public:
 #undef UPDATE_VAL
 		m_AnalogueNumbers = numbersPresent? (numbersOutside? 1 : 2)
 						    : 0;
-		m_bDigitalClockPrefix = m_bDigitalClockUTC && m_bDigitalClockLocal;
 	}
 
 	bool UpdateLocationFromMessage(const std::string & message)
@@ -704,7 +709,7 @@ public:
 	{
 		dBox = m_boxLocal;
 		pointSize = m_digitalPointSize;
-		if(m_bDigitalClockPrefix)
+		if(DigitalClockPrefix())
 			prefix = "TOD ";
 		else
 			prefix = std::string();
@@ -715,7 +720,7 @@ public:
 	{
 		dBox = m_boxUTC;
 		pointSize = m_digitalPointSize;
-		if(m_bDigitalClockPrefix)
+		if(DigitalClockPrefix())
 			prefix = "UTC ";
 		else
 			prefix = std::string();
@@ -753,7 +758,34 @@ public:
 		return m_y;
 	}
 
+	bool hasDigitalUTC() const
+	{
+		return m_bDigitalClockUTC;
+	}
+
+	bool hasDigitalLocal() const
+	{
+		return m_bDigitalClockLocal;
+	}
+
 private:
+
+	static bool DigitalClockPrefix()
+	{
+		RegionsMap pRegions = pGlobalRegions;
+		bool bUTC = false;
+		bool bLocal = false;
+		for(const auto & kv : *pRegions)
+		{
+			bUTC = bUTC || kv.second->hasDigitalUTC();
+			bLocal = bLocal || kv.second->hasDigitalLocal();
+			//Check on every loop so we don't necessarily have to check every region
+			if(bLocal && bUTC)
+				return true;
+		}
+		return false;
+	}
+
 	bool m_bRecalcReqd;
 	bool m_bRotationReqd;
 	DisplayBox m_boxAnalogue;
@@ -769,7 +801,6 @@ private:
 	bool m_bAnalogueClockLocal;
 	bool m_bDigitalClockUTC;
 	bool m_bDigitalClockLocal;
-	bool m_bDigitalClockPrefix = false;
 	bool m_bDate;
 	bool m_bDateLocal;
 	bool m_bLandscape;
@@ -781,11 +812,6 @@ private:
 	VGfloat prev_height = 0.0;
 	VGfloat prev_width = 0.0;
 };
-
-typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap_Base;
-typedef std::shared_ptr<RegionsMap_Base> RegionsMap;
-
-RegionsMap pGlobalRegions(new RegionsMap_Base());
 
 bool UpdateCount(RegionsMap pRegions, int newCount)
 {
