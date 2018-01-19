@@ -23,6 +23,7 @@ The PiClock display is made up of 1 or more regions, each region can contain all
 ## Argument format
 
 Each command can take 0 or more arguments, as discussed above extra arguments will be ignore by the PiClock. Arguments can be a number of formats:
+
 |Type  |Format                                                           |
 |------|-----------------------------------------------------------------|
 |string|Inline UTF-8 formatted string                                    |
@@ -93,6 +94,7 @@ Global Commands refer to the whole display area, not individual regions.
   ``SETGLOBAL:landscape:screensaver<CR>``
   
   Sets global flags, defaults if no command is ever sent:
+
   |Argument   |Type   |Default|Description|
   |-----------|-------|-------|-----------|
   |landscape  |bool   |true   |Whether to make the output landscape (true, wider than tall) or portrait (false, taller than wide) |
@@ -103,6 +105,7 @@ Global Commands refer to the whole display area, not individual regions.
   ``SETPROFILE:name<CR>``
   
   Tell the PiClock the name of its current profile (for display next to MAC address at the bottom of the display).
+
   |Argument    |Type   |Description
   |------------|-------|-----------
   |name        |string |Name to display (cannot contain colon character)
@@ -112,6 +115,7 @@ Global Commands refer to the whole display area, not individual regions.
   ``SETREGIONCOUNT:count<CR>``
   
   Sets the number of regions that should be handled/displayed
+
   |Argument    |Type   |Default|Description
   |------------|-------|-------|-----------
   |count       |int    |1      |Number of regions
@@ -127,6 +131,7 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   ``SETSIZE:rows:cols<CR>``
   
   Sets the number of rows of indication tallies to display, and the default number of columns of tallies on each of these rows
+
   |Argument   |Type   |Default|Description|
   |-----------|-------|-------|-----------|
   |rows       |int    |0      |Number of rows of tally indicators to display |
@@ -210,43 +215,15 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
 
 * **SETLOCATION**
 
+  ``SETLOCATION:x:y:width:height<CR>``
   
+  Sets the location and size of this region. All values are a proportion of the
+  display width/height, between 0 and 1. Co-ordinate 0,0 is in the bottom
+  left corner and 1,1 is in the top right.
 
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  |Argument |Type   |Default |Description
+  |---------|-------|--------|-----------
+  |x        |float  |0       |Co-ordinate of left edge of display area
+  |y        |float  |0       |Co-ordinate of bottom edge of display area
+  |width    |float  |1       |Width of display area of the region
+  |height   |float  |1       |Height of display area of the region
