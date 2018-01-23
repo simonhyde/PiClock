@@ -5,14 +5,15 @@
 #include <string>
 #include <fstream>
 #include <map>
+#include <queue>
 #include <cctype>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <memory>
 #include <boost/program_options.hpp>
 #include <netdb.h>
 #include <time.h>
@@ -28,6 +29,7 @@
 #include "blocking_tcp_client.cpp"
 //piface digital
 #include "pifacedigital.h"
+#include "piclock_messages.h"
 
 #define FPS 25
 #define FRAMES 0
@@ -45,10 +47,8 @@ std::string TALLY_SECRET("SharedSecretGoesHere");
 std::vector<std::string> tally_hosts;
 
 class RegionState;
-typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap_Base;
-typedef std::shared_ptr<RegionsMap_Base> RegionsMap;
+typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap;
 
-RegionsMap pGlobalRegions(new RegionsMap_Base());
 
 #define FONT_PROP	(SerifTypeface)
 #define FONT_HOURS	(SansTypeface)
@@ -67,51 +67,32 @@ void * ntp_check_thread(void * arg)
 	return NULL;
 }
 
-class TallyColour
+class MessageQueue
 {
 public:
-	uint32_t R() const
+	void Add(const std::shared_ptr<ClockMsg> & pMsg)
 	{
-		return (col >> 16)&0xFF;
+		std::lock_guard<std::mutex> hold_lock(m_access_mutex);
+		m_queue.push(pMsg);
 	}
-	uint32_t G() const
+	bool Get(std::queue<std::shared_ptr<ClockMsg> > &output)
 	{
-		return (col >> 8)&0xFF;
+		std::lock_guard<std::mutex> hold_lock(m_access_mutex);
+		if(!m_queue.empty())
+		{
+			output.swap(m_queue);
+			std::queue<std::shared_ptr<ClockMsg> > empty_q;
+			m_queue.swap(empty_q);
+			return true;
+		}
+		return false;
 	}
-	uint32_t B() const
-	{
-		return col & 0xFF;
-	}
-	TallyColour(const std::string &input)
-		:col(std::stoul(input, NULL, 16))
-	{
-	}
-	TallyColour(uint8_t r, uint8_t g, uint8_t b)
-		:col( (r<<16) | (g<<8) | b )
-	{
-	}
-	TallyColour()
-		:col(0) //Default to black
-	{
-	}
-	bool Equals(const TallyColour & other) const
-	{
-		return other.col == col;
-	}
-
-	void Fill()
-	{
-		::Fill(R(),G(),B(),1);
-	}
-
-	void Stroke()
-	{
-		::Stroke(R(),G(),B(),1);
-	}
-
-protected:
-	uint32_t col;
+private:
+	std::queue<std::shared_ptr<ClockMsg> > m_queue;
+	std::mutex m_access_mutex;
 };
+
+MessageQueue msgQueue;
 
 
 class TallyState
@@ -147,6 +128,10 @@ public:
 	}
 	std::shared_ptr<TallyState> SetLabel(const std::string & label) const override
 	{
+		//If it's identical, then return empty pointer
+		if((!m_label && label.size() == 0)
+	           ||(m_label && label == *m_label))
+			return std::shared_ptr<TallyState>();
 		std::shared_ptr<TallyState> ret = std::make_shared<SimpleTallyState>(*this);
 		auto derived = dynamic_cast<SimpleTallyState *>(ret.get());
 		if(label.size() > 0)
@@ -173,11 +158,21 @@ public:
 			&& *(derived->m_text) == *m_text;
 	}
 
+	SimpleTallyState(const std::shared_ptr<ClockMsg_SetTally> &pMsg)
+		:SimpleTallyState(*pMsg)
+	{
+	}
+
+	SimpleTallyState(const ClockMsg_SetTally &msg)
+		:SimpleTallyState(msg.colFg, msg.colBg, msg.sText)
+	{
+	}
+
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text)), m_label(new std::string())
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
 	{}
 	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text)), m_label(new std::string())
+	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
 	{}
 
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old)
@@ -187,7 +182,7 @@ public:
 		if(derived != NULL)
 			m_label = derived->m_label;
 		else
-			m_label = std::make_shared<std::string>();
+			m_label = std::shared_ptr<std::string>();
 	}
 	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old)
 	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
@@ -196,7 +191,7 @@ public:
 		if(derived != NULL)
 			m_label = derived->m_label;
 		else
-			m_label = std::make_shared<std::string>();
+			m_label = std::shared_ptr<std::string>();
 	}
 protected:
 	std::shared_ptr<TallyColour> m_FG, m_BG;
@@ -265,6 +260,14 @@ public:
 			    || (m_pFlashLimit && derived->m_pFlashLimit
 			       && *m_pFlashLimit == *(derived->m_pFlashLimit)));
 	}
+
+	CountdownClock(const std::shared_ptr<ClockMsg_SetCountdown> &pMsg)
+		:CountdownClock(*pMsg)
+	{}
+
+	CountdownClock(const ClockMsg_SetCountdown &msg)
+		:CountdownClock(msg.colFg, msg.colBg, msg.sText, msg.target, msg.bHasFlashLimit? std::make_shared<long long>(msg.iFlashLimit) : std::shared_ptr<long long>())
+	{}
 
 	CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const struct timeval & _target, std::shared_ptr<long long> pflash)
 	 :SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash)
@@ -389,7 +392,7 @@ public:
 	{
 		m_corner = x = y = w = h = 0;
 	}
-private:
+	private:
 	VGfloat m_corner;
 };
 
@@ -426,57 +429,6 @@ std::string FormatTime(const struct tm &data, time_t usecs)
        return buf;
 }
 
-std::string get_arg(const std::string & input, int index, bool bTerminated = true)
-{
-	size_t start_index = 0;
-	while(index > 0)
-	{
-		start_index = input.find(':', start_index) + 1;
-		index--;
-	}
-
-	if(!bTerminated)
-		return input.substr(start_index);
-
-	size_t end = input.find(':',start_index);
-	if(end != std::string::npos)
-		end -= start_index;
-	return input.substr(start_index,end);
-}
-
-int get_arg_int(const std::string &input, int index, bool bTerminated = true)
-{
-	return std::stoi(get_arg(input, index, bTerminated));
-}
-
-long get_arg_l(const std::string &input, int index, bool bTerminated = true)
-{
-	return std::stol(get_arg(input, index, bTerminated));
-}
-
-long long get_arg_ll(const std::string &input, int index, bool bTerminated = true)
-{
-	return std::stoll(get_arg(input, index, bTerminated));
-}
-
-VGfloat get_arg_f(const std::string &input, int index, bool bTerminated = true)
-{
-	return std::stod(get_arg(input, index, bTerminated));
-}
-std::shared_ptr<long long> get_arg_pll(const std::string &input, int index, bool bTerminated = true)
-{
-	auto str = get_arg(input, index, bTerminated);
-	if(str.length() <= 0)
-		return std::shared_ptr<long long>();
-	return std::shared_ptr<long long>(new long long(std::stoull(str)));
-}
-
-
-bool get_arg_bool(const std::string &input, int index, bool bTerminated = true)
-{
-	return get_arg_int(input, index, bTerminated) != 0;
-}
-
 class OverallState
 {
 public:
@@ -497,10 +449,14 @@ public:
 	{
 		return m_bScreenSaver;
 	}
-	void UpdateFromMessage(const std::string & message)
+	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetGlobal> &pMsg)
 	{
-		m_bLandscape = get_arg_bool(message,1);
-		m_bScreenSaver = get_arg_bool(message,2);
+		UpdateFromMessage(*pMsg);
+	}
+	void UpdateFromMessage(const ClockMsg_SetGlobal &message)
+	{
+		m_bLandscape = message.bLandscape;
+		m_bScreenSaver = message.bScreenSaver;
 	}
 
 	void SetLandscape(bool bLandscape)
@@ -537,7 +493,7 @@ public:
 			other.m_bDate                 == m_bDate                 &&
 			other.m_bDateLocal            == m_bDateLocal;
 	}
-	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus)
+	bool RecalcDimensions(const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix)
 	{
 		auto day = (m_bDateLocal? local:utc).tm_mday;
 		bool bBoxLandscape = width > height;
@@ -591,7 +547,7 @@ public:
 #if FRAMES
 				clockStr = clockStr + ":99";
 #endif
-				if(DigitalClockPrefix())
+				if(bDigitalClockPrefix)
 					clockStr = "TOD " + clockStr;
 				m_digitalPointSize = MaxPointSize(digitalColWidth*.95f, textHeight, clockStr, FONT_MONO);
 				digitalHeight = TextHeight(FONT_MONO, m_digitalPointSize)*1.1f;
@@ -643,40 +599,48 @@ public:
 		}
 		return false;
 	}
+	
+	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLayout> &pMsg)
+	{
+		UpdateFromMessage(*pMsg);
+	}
 
-	void UpdateFromMessage(const std::string & message)
+	void UpdateFromMessage(const ClockMsg_SetLayout &msg)
 	{
 		bool newVal;
-#define UPDATE_VAL(val,idx) newVal = get_arg_bool(message,(idx)); \
-			    m_bRecalcReqd = m_bRecalcReqd || ((val) != newVal); \
-			    (val) = newVal;
-		UPDATE_VAL(m_bAnalogueClock,      1)
-		UPDATE_VAL(m_bAnalogueClockLocal, 2)
-		UPDATE_VAL(m_bDigitalClockUTC,    3)
-		UPDATE_VAL(m_bDigitalClockLocal,  4)
-		UPDATE_VAL(m_bDate,               5)
-		UPDATE_VAL(m_bDateLocal,          6)
-		//Skip Landscape parameter, this is now global, still transmitted by driver for legacy devices
+#define UPDATE_VAL(val,param) newVal = msg.param; \
+			      m_bRecalcReqd = m_bRecalcReqd || ((val) != newVal); \
+			      (val) = newVal;
+		UPDATE_VAL(m_bAnalogueClock,      bAnalogueClock)
+		UPDATE_VAL(m_bAnalogueClockLocal, bAnalogueClockLocal)
+		UPDATE_VAL(m_bDigitalClockUTC,    bDigitalClockUTC)
+		UPDATE_VAL(m_bDigitalClockLocal,  bDigitalClockLocal)
+		UPDATE_VAL(m_bDate,               bDate)
+		UPDATE_VAL(m_bDateLocal,          bDateLocal)
 		bool numbersPresent = m_AnalogueNumbers != 0;
 		bool numbersOutside = m_AnalogueNumbers != 2;
-		UPDATE_VAL(numbersPresent,8);
-		UPDATE_VAL(numbersOutside,9);
+		UPDATE_VAL(numbersPresent,	bNumbersPresent);
+		UPDATE_VAL(numbersOutside,	bNumbersOutside);
 #undef UPDATE_VAL
 		m_AnalogueNumbers = numbersPresent? (numbersOutside? 1 : 2)
 						    : 0;
 	}
 
-	bool UpdateLocationFromMessage(const std::string & message)
+	bool UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLocation> &pMsg)
+	{
+		return UpdateFromMessage(*pMsg);
+	}
+	bool UpdateFromMessage(const ClockMsg_SetLocation &msg)
 	{
 		VGfloat newVal;
 		bool changed = false;
-#define UPDATE_VAL(val,idx) newVal = get_arg_f(message,(idx)); \
-			    changed = changed || ((val) != newVal); \
-			    (val) = newVal;
-		UPDATE_VAL(m_x,		1)
-		UPDATE_VAL(m_y,		2)
-		UPDATE_VAL(m_width,	3)
-		UPDATE_VAL(m_height,	4)
+#define UPDATE_VAL(val,param) newVal = msg.param; \
+			      changed = changed || ((val) != newVal); \
+			      (val) = newVal;
+		UPDATE_VAL(m_x,		x)
+		UPDATE_VAL(m_y,		y)
+		UPDATE_VAL(m_width,	width)
+		UPDATE_VAL(m_height,	height)
 #undef UPDATE_VAL
 		m_bRecalcReqd = m_bRecalcReqd || changed;
 		return changed;
@@ -709,10 +673,7 @@ public:
 	{
 		dBox = m_boxLocal;
 		pointSize = m_digitalPointSize;
-		if(DigitalClockPrefix())
-			prefix = "TOD ";
-		else
-			prefix = std::string();
+		prefix = "TOD ";
 		return m_bDigitalClockLocal;
 	}
 
@@ -720,10 +681,7 @@ public:
 	{
 		dBox = m_boxUTC;
 		pointSize = m_digitalPointSize;
-		if(DigitalClockPrefix())
-			prefix = "UTC ";
-		else
-			prefix = std::string();
+		prefix = "UTC ";
 		return m_bDigitalClockUTC;
 	}
 
@@ -768,14 +726,12 @@ public:
 		return m_bDigitalClockLocal;
 	}
 
-private:
 
-	static bool DigitalClockPrefix()
+	static bool DigitalClockPrefix(const RegionsMap &regions)
 	{
-		RegionsMap pRegions = pGlobalRegions;
 		bool bUTC = false;
 		bool bLocal = false;
-		for(const auto & kv : *pRegions)
+		for(const auto & kv : regions)
 		{
 			bUTC = bUTC || kv.second->hasDigitalUTC();
 			bLocal = bLocal || kv.second->hasDigitalLocal();
@@ -785,6 +741,7 @@ private:
 		}
 		return false;
 	}
+private:
 
 	bool m_bRecalcReqd;
 	bool m_bRotationReqd;
@@ -813,10 +770,10 @@ private:
 	VGfloat prev_width = 0.0;
 };
 
-bool UpdateCount(RegionsMap pRegions, int newCount)
+bool UpdateCount(RegionsMap &regions, int newCount)
 {
 	std::set<int> removeIndices;
-	for(const auto & item: *pRegions)
+	for(const auto & item: regions)
 	{
 		if(item.first >= newCount || item.first < 0)
 			removeIndices.insert(item.first);
@@ -825,7 +782,7 @@ bool UpdateCount(RegionsMap pRegions, int newCount)
 	{
 		for(int index: removeIndices)
 		{
-			pRegions->erase(index);
+			regions.erase(index);
 		}
 		return true;
 	}
@@ -835,13 +792,13 @@ bool UpdateCount(RegionsMap pRegions, int newCount)
 
 int handle_tcp_message(const std::string &message, client & conn)
 {
-	if(message == "PING")
+	std::string cmd = get_arg(message,0);
+	if(cmd == "PING")
 	{
 		conn.write_line("PONG", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
 		return 2;
 	}
-	std::string cmd = get_arg(message,0);
-	if(cmd == "CRYPT")
+	else if(cmd == "CRYPT")
 	{
 		uint8_t sha_buf[SHA512_DIGEST_LENGTH];
 		std::string to_digest = get_arg(message,1,false) + TALLY_SECRET;
@@ -855,149 +812,142 @@ int handle_tcp_message(const std::string &message, client & conn)
 		conn.write_line(to_write, boost::posix_time::time_duration(0,0,10),'\r');
 		return 3;
 	}
-	RegionsMap pRegions(new RegionsMap_Base(*atomic_load(&pGlobalRegions)));
-	
-	if(cmd == "SETGLOBAL")
-	{
-		globalState.UpdateFromMessage(message);
-	}
 	else
 	{
-		bool bChanged = false;
-		bool bSizeChanged = false;
-		bool bMaxRegion = false;
-		int regionIndex = 0;
-
-		if(isdigit(cmd[0]))
+		auto parsed = ClockMsg_Parse(message);
+		if(parsed)
 		{
-			char * pEnd;
-			regionIndex = strtoul(cmd.c_str(), &pEnd, 10);
-			//This step to stop possible confusion when you try to overwrite cmd with its own contents...
-			std::string newCmd = pEnd;
-			cmd = newCmd;
-		}
-		else if(cmd != "SETREGIONCOUNT" && cmd != "SETPROFILE")
-		{
-			if(UpdateCount(pRegions, 1))
-			{
-				bChanged = true;
-				bSizeChanged = true;
-			}
-			bMaxRegion = true;
-		}
-		if(!(*pRegions)[regionIndex])
-		{
-			(*pRegions)[regionIndex] = std::make_shared<RegionState>();
-		}
-		std::shared_ptr<RegionState> pOld = (*pRegions)[regionIndex];
-		std::shared_ptr<RegionState> pNew = std::make_shared<RegionState>(*pOld);
-
-		if(bMaxRegion && (pNew->x() != 0.0f || pNew->y() != 0.0f || pNew->width() != 1.0f || pNew->height() != 1.0f))
-		{
-			bChanged = true;
-			bSizeChanged = true;
-			pNew->UpdateLocationFromMessage("SETLOCATION:0:0:1:1");
-		}
-
-		if(cmd == "SETREGIONCOUNT")
-		{
-			int newCount = get_arg_int(message, 1);
-			if(UpdateCount(pRegions, newCount))
-			{
-				bChanged = true;
-				bSizeChanged = true;
-			}
-		}
-		else if(cmd == "SETSIZE")
-		{
-			pNew->TD.nRows = get_arg_int(message,1);
-			pNew->TD.nCols_default = get_arg_int(message,2);
-			bChanged = pOld->TD.nRows != pNew->TD.nRows || pOld->TD.nCols_default != pNew->TD.nCols_default;
-			bSizeChanged = bChanged;
-		}
-		else if(cmd == "SETLOCATION")
-		{
-			if(pNew->UpdateLocationFromMessage(message))
-			{
-				bChanged = bSizeChanged = true;
-			}
-		}
-		else if(cmd == "SETROW")
-		{
-			int row = get_arg_int(message,1);
-			int col_count = get_arg_int(message,2);
-			pNew->TD.nCols[row] = col_count;
-			bChanged = bChanged || (pOld->TD.nCols[row] != col_count);
-		}
-		else if(cmd == "SETTALLY" || cmd == "SETCOUNTDOWN")
-		{
-			int row = get_arg_int(message,1);
-			int col = get_arg_int(message,2);
-			if(cmd == "SETCOUNTDOWN")
-			{
-				struct timeval target;
-				target.tv_sec = get_arg_ll(message,5);
-				target.tv_usec = get_arg_l(message,6);
-
-				pNew->TD.displays[row][col] = std::make_shared<CountdownClock>(
-							  get_arg(message,3),
-							  get_arg(message,4),
-							  get_arg(message,8,false),
-							  target,
-							  get_arg_pll(message,7));
-			}
-			else
-			{
-				pNew->TD.displays[row][col] = std::make_shared<SimpleTallyState>(
-							  get_arg(message,3),
-							  get_arg(message,4),
-							  get_arg(message,5,false),
-							  pOld->TD.displays[row][col]);
-			}
-			bChanged = bChanged || (!pNew->TD.displays[row][col]->Equals(pOld->TD.displays[row][col]));
-			struct timeval tvTmp;
-			tvTmp.tv_sec = tvTmp.tv_usec = 0;
-			bSizeChanged = bSizeChanged || !(pOld->TD.displays[row][col])
-				      || pNew->TD.displays[row][col]->Text(tvTmp) != pOld->TD.displays[row][col]->Text(tvTmp)
-				      || pNew->TD.displays[row][col]->IsMonoSpaced() != pOld->TD.displays[row][col]->IsMonoSpaced();
-		}
-		else if(cmd == "SETLABEL")
-		{
-			int row = get_arg_int(message,1);
-			int col = get_arg_int(message,2);
-			if(pNew->TD.displays[row][col])
-			{
-				pNew->TD.displays[row][col] = pNew->TD.displays[row][col]->SetLabel(get_arg(message,3,false));
-				bChanged = true;
-			}
-		}
-		else if(cmd == "SETPROFILE")
-		{
-			pNew->TD.sProfName = get_arg(message, 1);
-			bChanged = pNew->TD.sProfName != pOld->TD.sProfName;
-		}
-		else if(cmd == "SETLAYOUT")
-		{
-			pNew->UpdateFromMessage(message);
-			bChanged = !pNew->LayoutEqual(pOld);
+			msgQueue.Add(parsed);
 		}
 		else
 		{
 			//Unknwon command, just NACK
 			conn.write_line("NACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
-			return 1;
-		}
-		if(bChanged)
-		{
-			if(bSizeChanged)
-				pNew->TD.textSize = -1;
-			(*pRegions)[regionIndex] = pNew;
-			atomic_store(&pGlobalRegions,pRegions);
 		}
 	}
 	conn.write_line("ACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
 	return 1;
 }
+
+void handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions)
+{
+	while(!msgs.empty())
+	{
+		auto pMsg = msgs.front();
+		msgs.pop();
+		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetGlobal>(pMsg))
+		{
+			globalState.UpdateFromMessage(castCmd);
+			continue;
+		}
+
+		int regionIndex = 0;
+		bool bMaxRegion = false;
+		bool bSizeChanged = false;
+#define UPDATE_CHECK(target, source)	{ auto tmp = (source); bSizeChanged = bSizeChanged || ((target) != tmp); (target) = tmp;}
+		if(auto regionCmd = std::dynamic_pointer_cast<ClockMsg_Region>(pMsg))
+		{
+			if(regionCmd->bHasRegionIndex)
+				regionIndex = regionCmd->regionIndex;
+			else
+			{
+				if(UpdateCount(regions, 1))
+				{
+					bSizeChanged = true;
+				}
+				bMaxRegion = true;
+			}
+		}
+		if(!regions[regionIndex])
+		{
+			regions[regionIndex] = std::make_shared<RegionState>();
+		}
+		std::shared_ptr<RegionState> pRS = regions[regionIndex];
+		bSizeChanged = bSizeChanged || (pRS->TD.textSize == -1);
+
+		if(bMaxRegion && (pRS->x() != 0.0f || pRS->y() != 0.0f || pRS->width() != 1.0f || pRS->height() != 1.0f))
+		{
+			bSizeChanged = true;
+			pRS->UpdateFromMessage(std::make_shared<ClockMsg_SetLocation>(std::make_shared<int>(regionIndex), "SETLOCATION:0:0:1:1"));
+		}
+
+		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetRegionCount>(pMsg))
+		{
+			if(UpdateCount(regions, castCmd->iCount))
+			{
+				bSizeChanged = true;
+			}
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetSize>(pMsg))
+		{
+			UPDATE_CHECK(pRS->TD.nRows, castCmd->iRows)
+			UPDATE_CHECK(pRS->TD.nCols_default, castCmd->iCols)
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetLocation>(pMsg))
+		{
+			if(pRS->UpdateFromMessage(castCmd))
+			{
+				bSizeChanged = true;
+			}
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetRow>(pMsg))
+		{
+			UPDATE_CHECK(pRS->TD.nCols[castCmd->iRow], castCmd->iCols);
+		}
+		else if(auto indCmd = std::dynamic_pointer_cast<ClockMsg_SetIndicator>(pMsg))
+		{
+			std::shared_ptr<TallyState> pNewState;
+			if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetCountdown>(pMsg))
+			{
+				pNewState = std::make_shared<CountdownClock>(castCmd);
+			}
+			else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetTally>(pMsg))
+			{
+				pNewState = std::make_shared<SimpleTallyState>(castCmd);
+			}
+			struct timeval tvTmp;
+			tvTmp.tv_sec = tvTmp.tv_usec = 0;
+			int row = indCmd->iRow;
+			int col = indCmd->iCol;
+			bSizeChanged = bSizeChanged || !pNewState
+				      || !(pRS->TD.displays[row][col])
+				      || pNewState->Text(tvTmp) != pRS->TD.displays[row][col]->Text(tvTmp)
+				      || pNewState->IsMonoSpaced() != pRS->TD.displays[row][col]->IsMonoSpaced();
+			pRS->TD.displays[row][col] = pNewState;
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetLabel>(pMsg))
+		{
+			int row = castCmd->iRow;
+			int col = castCmd->iCol;
+			if(pRS->TD.displays[row][col])
+			{
+				auto pNew = pRS->TD.displays[row][col]->SetLabel(castCmd->sText);
+				//Returns an empty pointer if the label is the same (ie no change required)
+				if(pNew)
+				{
+					bSizeChanged = true;
+					pRS->TD.displays[row][col] = pNew;
+				}
+			}
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetProfile>(pMsg))
+		{
+			//No size calculation depends upon the setting of this string, so just store it.
+			pRS->TD.sProfName = castCmd->sProfile;
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetLayout>(pMsg))
+		{
+			pRS->UpdateFromMessage(castCmd);
+		}
+		else
+		{
+			fprintf(stderr, "IMPOSSIBLE HAPPENED!! Received unknown command in message queue: %s\n",typeid(pMsg.get()).name());
+		}
+		if(bSizeChanged)
+			pRS->TD.textSize = -1;
+	}
+}
+
 
 void tcp_thread(const std::string remote_host, bool * pbComms)
 {
@@ -1084,12 +1034,6 @@ void read_settings(const std::string & filename,
 	po::notify(vm);
 }
 
-void clearRegions()
-{
-	RegionsMap pRegions(new std::map<int,std::shared_ptr<RegionState>>());
-	(*pRegions)[0] = std::make_shared<RegionState>();
-	atomic_store(&pGlobalRegions, pRegions);
-}
 
 int main(int argc, char *argv[]) {
 	int iwidth, iheight;
@@ -1101,7 +1045,7 @@ int main(int argc, char *argv[]) {
 	timeout.tv_usec = timeout.tv_sec = 0;
 	std::string configFile = "piclock.cfg";
 	std::string last_date_string;
-	clearRegions();
+	RegionsMap regions;
 	if(argc > 1)
 		configFile = argv[1];
 	po::variables_map vm;
@@ -1136,8 +1080,12 @@ int main(int argc, char *argv[]) {
 		create_tcp_threads();
 	while(1)
 	{
-		//Copy reference to current set of states, this then shouldn't change whilst we're processing it...
-		RegionsMap pRegions = atomic_load(&pGlobalRegions);
+		//Hnadle any queued messages
+		std::queue<std::shared_ptr<ClockMsg> > newMsgs;
+		msgQueue.Get(newMsgs);
+		handle_clock_messages(newMsgs, regions);
+		
+		bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(regions);
 		gettimeofday(&tval, NULL);
 		localtime_r(&tval.tv_sec, &tm_local);
 		gmtime_r(&tval.tv_sec, &tm_utc);
@@ -1171,7 +1119,7 @@ int main(int argc, char *argv[]) {
 			}
 			Translate(h_offset_pos, v_offset_pos);
 		}
-		for(const auto & region : *pRegions)
+		for(const auto & region : regions)
 		{
 			std::string profName;
 			int i;
@@ -1184,7 +1132,7 @@ int main(int argc, char *argv[]) {
 			VGfloat return_y = display_height *pRS->y();
 			Translate(return_x, return_y);
 
-			if(pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst))
+			if(pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix))
 			{
 				//Force recalc...
 				commsWidth = -1;
@@ -1200,12 +1148,16 @@ int main(int argc, char *argv[]) {
 			std::string prefix;
 			if(pRS->DigitalLocal(db, pointSize, prefix))
 			{
-				std::string time_str = prefix + FormatTime(tm_local,tval.tv_usec);
+				std::string time_str = FormatTime(tm_local, tval.tv_usec);
+				if(bDigitalClockPrefix)
+					time_str = prefix + time_str;
 				db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
 			}
 			if(pRS->DigitalUTC(db, pointSize, prefix))
 			{
-				std::string time_str = prefix + FormatTime(tm_utc,tval.tv_usec);
+				std::string time_str = FormatTime(tm_utc, tval.tv_usec);
+				if(bDigitalClockPrefix)
+					time_str = prefix + time_str;
 				db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
 			}
 			bool bLocal;
@@ -1316,15 +1268,10 @@ int main(int argc, char *argv[]) {
 					//Stop showing stuff after 5 seconds of comms failed...
 					else if(tm_last_comms_good < tval.tv_sec - 5)
 					{
-						//clearRegions();
-						auto allRegions = std::make_shared<RegionsMap_Base>(*atomic_load(&pGlobalRegions));
-						for(auto & reg: *allRegions)
+						for(auto & reg: regions)
 						{
-							std::shared_ptr<RegionState> newRS(new RegionState(*(reg.second)));
-							newRS->TD.clear();
-							reg.second = newRS;
+							reg.second->TD.clear();
 						}
-						atomic_store(&pGlobalRegions,allRegions);
 					}
 				}
 			}

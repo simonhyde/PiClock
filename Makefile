@@ -1,6 +1,6 @@
 all: piclock
 
-piclock.o:	piclock.cpp blocking_tcp_client.cpp 
+piclock.o:	piclock.cpp blocking_tcp_client.cpp  piclock_messages.h
 	gcc -O4 -Wall -I/opt/vc/include -Ilibmcp23s17/src -Ilibpifacedigital/src -I/opt/vc/include/interface/vcos/pthreads -Iopenvg -c -o piclock.o piclock.cpp
 piclock:	piclock.o openvg/libshapes.o openvg/oglinit.o ntpstat.o libmcp23s17/libmcp23s17.a libpifacedigital/libpifacedigital.a
 	gcc -O4 -Wall -o piclock piclock.o ntpstat.o openvg/libshapes.o openvg/oglinit.o -L/opt/vc/lib -Llibmcp23s17 -Llibpifacedigital -lbrcmGLESv2 -lbrcmEGL -lbcm_host -ljpeg -lpthread -lm -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -std=c++11
