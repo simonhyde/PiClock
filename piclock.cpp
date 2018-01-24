@@ -135,7 +135,7 @@ public:
 		std::shared_ptr<TallyState> ret = std::make_shared<SimpleTallyState>(*this);
 		auto derived = dynamic_cast<SimpleTallyState *>(ret.get());
 		if(label.size() > 0)
-			derived->m_label = std::shared_ptr<std::string>(new std::string(label));
+			derived->m_label = std::make_shared<std::string>(label);
 		else
 			derived->m_label = std::shared_ptr<std::string>();
 		return ret;
@@ -169,14 +169,14 @@ public:
 	}
 
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	 :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(std::make_shared<std::string>(_text))
 	{}
 	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	 :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(std::make_shared<std::string>(_text))
 	{}
 
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	 :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(std::make_shared<std::string>(_text))
 	{
 		auto derived = dynamic_cast<SimpleTallyState *>(_old.get());
 		if(derived != NULL)
@@ -185,7 +185,7 @@ public:
 			m_label = std::shared_ptr<std::string>();
 	}
 	SimpleTallyState(const TallyColour & fg, const TallyColour &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old)
-	 :m_FG(new TallyColour(fg)),m_BG(new TallyColour(bg)),m_text(new std::string(_text))
+	 :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(std::make_shared<std::string>(_text))
 	{
 		auto derived = dynamic_cast<SimpleTallyState *>(_old.get());
 		if(derived != NULL)
@@ -232,7 +232,7 @@ public:
 		secs = std::abs(secs);
 		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld",
 			 negChar, secs/3600, (secs/60)%60, secs %60);
-		return std::shared_ptr<std::string>(new std::string(buf));
+		return std::make_shared<std::string>(buf);
 	}
 	std::shared_ptr<std::string> Label(const struct timeval &curTime) const override
 	{
@@ -514,8 +514,8 @@ public:
 					textWidth -= dim;
 				//Always in the top right corner
 				m_boxAnalogue = DisplayBox(width - dim, height - dim, dim, dim);
-				m_hours_x.reset(new std::map<int, VGfloat>());
-				m_hours_y.reset(new std::map<int, VGfloat>());
+				m_hours_x = std::make_shared<std::map<int, VGfloat> >();
+				m_hours_y = std::make_shared<std::map<int, VGfloat> >();
 				int i;
 				VGfloat factor = 9.0f/20.0f;
 				if(m_AnalogueNumbers == 2)

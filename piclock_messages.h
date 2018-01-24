@@ -43,7 +43,7 @@ std::shared_ptr<long long> get_arg_pll(const std::string &input, int index, bool
 	auto str = get_arg(input, index, bTerminated);
 	if(str.length() <= 0)
 		return std::shared_ptr<long long>();
-	return std::shared_ptr<long long>(new long long(std::stoull(str)));
+	return std::make_shared<long long>(std::stoull(str));
 }
 
 
