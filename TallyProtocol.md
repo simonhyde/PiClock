@@ -227,3 +227,33 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   |y        |float  |0       |Co-ordinate of bottom edge of display area
   |width    |float  |1       |Width of display area of the region
   |height   |float  |1       |Height of display area of the region
+
+* **SETFONTSIZEZONES**
+
+  ``SETFONTSIZEZONES:row0:row1:...<CR>``
+  
+  Sets the font size zone names for each tally indicator on each row.
+
+  By default PiClock will find the maximum font size that can still display
+  the text on all indicators in each region, and use that font size for
+  all indicators in each region.
+
+  By setting zone names against individual cells, you can create different
+  groups of indicators which are sized separately. All indicators within
+  a given zone are sized as above, finding the max font for those indicators.
+
+  Zone names beginning with the letter 'G' are global to all regions, others
+  are local to each region, so a zone with the same name in another region
+  will be calculated separately.
+
+  Each row description has a comma-separated list of zone names for the
+  indicators on that row. Any unspecified indicators, or unspecified rows
+  are left in the default (local to a zone) category.
+
+  To leave a given indicator in the default category, simply leave its zone
+  empty.
+
+  |Argument |Type   |Default |Description
+  |---------|-------|--------|-----------
+  |row0     |list   |        |Comma-separated list of zone names for row 0
+  |row1     |list   |        |Comma-separated list of zone names for row 1

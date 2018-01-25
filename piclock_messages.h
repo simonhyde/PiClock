@@ -1,22 +1,33 @@
 #ifndef __PICLOCK_MESSAGES_H
 #define __PICLOCK_MESSAGES_H
 
-std::string get_arg(const std::string & input, int index, bool bTerminated = true)
+std::shared_ptr<std::string> get_arg_p(const std::string & input, int index, bool bTerminated = true)
 {
 	size_t start_index = 0;
 	while(index > 0)
 	{
-		start_index = input.find(':', start_index) + 1;
+		auto found = input.find(':', start_index);
+		if(found == std::string::npos)
+			return std::shared_ptr<std::string>();
+		start_index = found + 1;
 		index--;
 	}
 
 	if(!bTerminated)
-		return input.substr(start_index);
+		return std::make_shared<std::string>(input.substr(start_index));
 
 	size_t end = input.find(':',start_index);
 	if(end != std::string::npos)
 		end -= start_index;
-	return input.substr(start_index,end);
+	return std::make_shared<std::string>(input.substr(start_index,end));
+}
+
+std::string get_arg(const std::string & input, int index, bool bTerminated = true)
+{
+	auto ret = get_arg_p(input, index, bTerminated);
+	if(ret)
+		return *ret;
+	return std::string();
 }
 
 int get_arg_int(const std::string &input, int index, bool bTerminated = true)
@@ -194,6 +205,42 @@ public:
 	}
 };
 
+class ClockMsg_SetFontSizeZones : public ClockMsg_Region
+{
+public:
+	std::vector<std::vector<std::string>> data;
+	ClockMsg_SetFontSizeZones(const std::shared_ptr<int> &region, const std::string & message)
+		:ClockMsg_Region(region, message)
+	{
+		std::string region_prefix = "R" + std::to_string(regionIndex);
+		int i = 0;
+		while(auto pRow = get_arg_p(message, ++i))
+		{
+			std::vector<std::string> cols;
+			size_t start_index = -1;
+			const std::string & row = *pRow;
+			do
+			{
+				start_index++;
+				size_t end_index = row.find(',',start_index);
+				size_t length;
+				if(end_index == std::string::npos)
+					length = std::string::npos;
+				else
+					length = end_index - start_index;
+				std::string newVal = row.substr(start_index, length);
+				if(newVal.empty() || newVal[0] != 'G')
+					newVal = region_prefix + newVal;
+				cols.push_back(newVal);
+				start_index = end_index;
+			}
+			while(start_index != std::string::npos);
+
+			data.push_back(cols);
+		}
+	}
+};
+
 class ClockMsg_SetRegionCount : public ClockMsg
 {
 public:
@@ -336,6 +383,8 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 		return std::make_shared<ClockMsg_SetLabel>(region, message);
 	if(cmd == "SETLAYOUT")
 		return std::make_shared<ClockMsg_SetLayout>(region, message);
+	if(cmd == "SETFONTSIZEZONES")
+		return std::make_shared<ClockMsg_SetFontSizeZones>(region, message);
 	return std::shared_ptr<ClockMsg>();
 
 }

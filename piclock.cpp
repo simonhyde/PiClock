@@ -8,6 +8,7 @@
 #include <queue>
 #include <cctype>
 #include <memory>
+#include <vector>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -646,6 +647,38 @@ public:
 		return changed;
 	}
 
+	bool UpdateFromMessage(const std::shared_ptr<ClockMsg_SetFontSizeZones> &pMsg)
+	{
+		return UpdateFromMessage(*pMsg);
+	}
+
+	bool UpdateFromMessage(const ClockMsg_SetFontSizeZones &msg)
+	{
+		if(msg.data != m_size_zones)
+		{
+			m_size_zones = msg.data;
+			return true;
+		}
+		return false;
+	}
+
+	void SetDefaultZone(const std::string &def)
+	{
+		m_default_zone = def;
+	}
+
+	const std::string & GetZone(int row, int col)
+	{
+		const std::string *pRet;
+		if((row < (int)m_size_zones.size())
+			&& (col < (int)m_size_zones[row].size())
+			&& !(pRet = &(m_size_zones[row][col]))->empty())
+		{
+			return *pRet;
+		}
+		return m_default_zone;
+	}
+
 //Simple accessor methods
 	bool Rotate()
 	{
@@ -753,6 +786,8 @@ private:
 	int lastDayOfMonth = -1;
 	std::shared_ptr<std::map<int, VGfloat>> m_hours_x;
 	std::shared_ptr<std::map<int, VGfloat>> m_hours_y;
+	std::vector<std::vector<std::string>> m_size_zones;
+	std::string m_default_zone;
 
 	bool m_bAnalogueClock;
 	bool m_bAnalogueClockLocal;
@@ -829,8 +864,9 @@ int handle_tcp_message(const std::string &message, client & conn)
 	return 1;
 }
 
-void handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions)
+bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions)
 {
+	bool bSizeChanged = false;
 	while(!msgs.empty())
 	{
 		auto pMsg = msgs.front();
@@ -843,7 +879,6 @@ void handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 
 		int regionIndex = 0;
 		bool bMaxRegion = false;
-		bool bSizeChanged = false;
 #define UPDATE_CHECK(target, source)	{ auto tmp = (source); bSizeChanged = bSizeChanged || ((target) != tmp); (target) = tmp;}
 		if(auto regionCmd = std::dynamic_pointer_cast<ClockMsg_Region>(pMsg))
 		{
@@ -863,7 +898,6 @@ void handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 			regions[regionIndex] = std::make_shared<RegionState>();
 		}
 		std::shared_ptr<RegionState> pRS = regions[regionIndex];
-		bSizeChanged = bSizeChanged || (pRS->TD.textSize == -1);
 
 		if(bMaxRegion && (pRS->x() != 0.0f || pRS->y() != 0.0f || pRS->width() != 1.0f || pRS->height() != 1.0f))
 		{
@@ -939,13 +973,16 @@ void handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 		{
 			pRS->UpdateFromMessage(castCmd);
 		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetFontSizeZones>(pMsg))
+		{
+			bSizeChanged |= pRS->UpdateFromMessage(castCmd);
+		}
 		else
 		{
 			fprintf(stderr, "IMPOSSIBLE HAPPENED!! Received unknown command in message queue: %s\n",typeid(pMsg.get()).name());
 		}
-		if(bSizeChanged)
-			pRS->TD.textSize = -1;
 	}
+	return bSizeChanged;
 }
 
 
@@ -1046,6 +1083,7 @@ int main(int argc, char *argv[]) {
 	std::string configFile = "piclock.cfg";
 	std::string last_date_string;
 	RegionsMap regions;
+	std::map<std::string, int> textSizes;
 	if(argc > 1)
 		configFile = argv[1];
 	po::variables_map vm;
@@ -1078,18 +1116,19 @@ int main(int argc, char *argv[]) {
 		pifacedigital_open(0);
 	else if(GPI_MODE == 2)
 		create_tcp_threads();
+	bool bRecalcTextsNext = true;
 	while(1)
 	{
-		//Hnadle any queued messages
+		//Handle any queued messages
 		std::queue<std::shared_ptr<ClockMsg> > newMsgs;
 		msgQueue.Get(newMsgs);
-		handle_clock_messages(newMsgs, regions);
+		bool bRecalcTexts = handle_clock_messages(newMsgs, regions) || bRecalcTextsNext;
+		bRecalcTextsNext = false;
 		
 		bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(regions);
 		gettimeofday(&tval, NULL);
 		localtime_r(&tval.tv_sec, &tm_local);
 		gmtime_r(&tval.tv_sec, &tm_utc);
-		bool bFirst = true;
 
 		Start(iwidth, iheight);					// Start the picture
 		Background(0, 0, 0);					// Black background
@@ -1119,25 +1158,59 @@ int main(int argc, char *argv[]) {
 			}
 			Translate(h_offset_pos, v_offset_pos);
 		}
+		bool bFirst = true;
+		for(const auto & region : regions)
+		{
+			auto &RS = *region.second;
+			VGfloat inner_height = display_height * RS.height();
+			VGfloat inner_width = display_width * RS.width();
+
+			if(RS.RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix))
+				bRecalcTexts = true;
+			bFirst = false;
+		}
+		if(bRecalcTexts)
+		{
+			for(const auto & region : regions)
+			{
+				auto &RS = *region.second;
+				RS.SetDefaultZone("R" + std::to_string(region.first));
+				DisplayBox db = RS.TallyBox();
+				VGfloat row_height = (db.h)/((VGfloat)RS.TD.nRows);
+				VGfloat col_width_default = db.w/((VGfloat)RS.TD.nCols_default);
+
+				for(int row = 0; row < RS.TD.nRows; row++)
+				{
+					int col_count = RS.TD.nCols[row];
+					VGfloat col_width = col_width_default;
+					if(col_count <= 0)
+						col_count = RS.TD.nCols_default;
+					else
+						col_width = db.w/((VGfloat)col_count);
+					for(int col = 0; col < col_count; col++)
+					{
+						const std::string & zone = RS.GetZone(row, col);
+						auto item = RS.TD.displays[row][col];
+						if(!item)
+							continue;
+						auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (item->Label(tval)? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
+						if(textSizes[zone] == 0 || textSizes[zone] > maxItemSize)
+							textSizes[zone] = maxItemSize;
+					}
+				}
+			}
+			commsWidth = -1;
+		}
 		for(const auto & region : regions)
 		{
 			std::string profName;
 			int i;
 			std::shared_ptr<RegionState> pRS = region.second;
 
-			VGfloat inner_height = display_height * pRS->height();
-			VGfloat inner_width = display_width * pRS->width();
-
 			VGfloat return_x = display_width *pRS->x();
 			VGfloat return_y = display_height *pRS->y();
 			Translate(return_x, return_y);
 
-			if(pRS->RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix))
-			{
-				//Force recalc...
-				commsWidth = -1;
-				pRS->TD.textSize = -1;
-			}
 			Fill(255, 255, 255, 1);					// white text
 			Stroke(255, 255, 255, 1);				// White strokes
 			StrokeWidth(0);//Don't draw strokes until we've moved onto the analogue clock
@@ -1170,7 +1243,7 @@ int main(int argc, char *argv[]) {
 			if(GPI_MODE == 1)
 			{
 				if(pRS->TD.nRows != 2)
-					pRS->TD.textSize = -1;
+					bRecalcTextsNext = true;
 				pRS->TD.nRows = 2;
 				pRS->TD.nCols_default = 1;
 				pRS->TD.nCols.empty();
@@ -1284,27 +1357,6 @@ int main(int argc, char *argv[]) {
 					VGfloat row_height = (db.h)/((VGfloat)pRS->TD.nRows);
 					VGfloat buffer = row_height*.02f;
 					VGfloat col_width_default = db.w/((VGfloat)pRS->TD.nCols_default);
-					if(pRS->TD.textSize < 0)
-					{
-						pRS->TD.textSize = 0xFFFFFFF;
-						for(int row = 0; row < pRS->TD.nRows; row++)
-						{
-							int col_count = pRS->TD.nCols[row];
-							VGfloat col_width = col_width_default;
-							if(col_count <= 0)
-								col_count = pRS->TD.nCols_default;
-							else
-								col_width = db.w/((VGfloat)col_count);
-							for(int col = 0; col < col_count; col++)
-							{
-								auto item = pRS->TD.displays[row][col];
-								if(!item)
-									continue;
-								auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (item->Label(tval)? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
-								pRS->TD.textSize = std::min(pRS->TD.textSize, maxItemSize);
-							}
-						}
-					}
 					//float y_offset = height/10.0f;
 					for(int row = 0; row < pRS->TD.nRows; row++)
 					{
@@ -1324,7 +1376,7 @@ int main(int argc, char *argv[]) {
 							curTally->BG(tval)->Fill();
 							dbTally.Roundrect(row_height/10.0f);
 							curTally->FG(tval)->Fill();
-							dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), pRS->TD.textSize, curTally->Label(tval));
+							dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), textSizes[pRS->GetZone(row,col)], curTally->Label(tval));
 						}
 					}
 				}
@@ -1459,7 +1511,6 @@ int main(int argc, char *argv[]) {
 			//Translate back to the origin...
 			if(return_x != 0.0 || return_y != 0.0)
 				Translate(-return_x, -return_y);
-			bFirst = false;
 		}
 		End();						   			// End the picture
 	}
