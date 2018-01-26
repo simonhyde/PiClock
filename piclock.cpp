@@ -130,12 +130,12 @@ public:
 	std::shared_ptr<TallyState> SetLabel(const std::string & label) const override
 	{
 		//If it's identical, then return empty pointer
-		if((!m_label && label.size() == 0)
-	           ||(m_label && label == *m_label))
+		if((!m_label && label.empty())
+	           ||(m_label && (label == *m_label)))
 			return std::shared_ptr<TallyState>();
 		std::shared_ptr<TallyState> ret = std::make_shared<SimpleTallyState>(*this);
 		auto derived = dynamic_cast<SimpleTallyState *>(ret.get());
-		if(label.size() > 0)
+		if(!label.empty())
 			derived->m_label = std::make_shared<std::string>(label);
 		else
 			derived->m_label = std::shared_ptr<std::string>();
@@ -159,13 +159,13 @@ public:
 			&& *(derived->m_text) == *m_text;
 	}
 
-	SimpleTallyState(const std::shared_ptr<ClockMsg_SetTally> &pMsg)
-		:SimpleTallyState(*pMsg)
+	SimpleTallyState(const std::shared_ptr<ClockMsg_SetTally> &pMsg, const std::shared_ptr<TallyState> & pOld)
+		:SimpleTallyState(*pMsg, pOld)
 	{
 	}
 
-	SimpleTallyState(const ClockMsg_SetTally &msg)
-		:SimpleTallyState(msg.colFg, msg.colBg, msg.sText)
+	SimpleTallyState(const ClockMsg_SetTally &msg, const std::shared_ptr<TallyState> & pOld)
+		:SimpleTallyState(msg.colFg, msg.colBg, msg.sText, pOld)
 	{
 	}
 
@@ -234,6 +234,10 @@ public:
 		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld",
 			 negChar, secs/3600, (secs/60)%60, secs %60);
 		return std::make_shared<std::string>(buf);
+	}
+	std::shared_ptr<TallyState> SetLabel(const std::string & label) const override
+	{
+		return std::shared_ptr<TallyState>();
 	}
 	std::shared_ptr<std::string> Label(const struct timeval &curTime) const override
 	{
@@ -868,7 +872,7 @@ int handle_tcp_message(const std::string &message, client & conn)
 	return 1;
 }
 
-bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions)
+bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions, struct timeval & tvCur)
 {
 	bool bSizeChanged = false;
 	while(!msgs.empty())
@@ -935,22 +939,40 @@ bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 		else if(auto indCmd = std::dynamic_pointer_cast<ClockMsg_SetIndicator>(pMsg))
 		{
 			std::shared_ptr<TallyState> pNewState;
+			int row = indCmd->iRow;
+			int col = indCmd->iCol;
+			auto pOldState = pRS->TD.displays[row][col];
 			if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetCountdown>(pMsg))
 			{
 				pNewState = std::make_shared<CountdownClock>(castCmd);
 			}
 			else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetTally>(pMsg))
 			{
-				pNewState = std::make_shared<SimpleTallyState>(castCmd);
+				pNewState = std::make_shared<SimpleTallyState>(castCmd, pOldState);
 			}
-			struct timeval tvTmp;
-			tvTmp.tv_sec = tvTmp.tv_usec = 0;
-			int row = indCmd->iRow;
-			int col = indCmd->iCol;
-			bSizeChanged = bSizeChanged || !pNewState
-				      || !(pRS->TD.displays[row][col])
-				      || pNewState->Text(tvTmp) != pRS->TD.displays[row][col]->Text(tvTmp)
-				      || pNewState->IsMonoSpaced() != pRS->TD.displays[row][col]->IsMonoSpaced();
+			if(!pNewState || !pOldState)
+				bSizeChanged = true;
+			else if(!bSizeChanged)
+			{
+				auto textOld = pOldState->Text(tvCur);
+				auto textNew = pNewState->Text(tvCur);
+				bool bMonoOld = pOldState->IsMonoSpaced();
+				bool bMonoNew = pNewState->IsMonoSpaced();
+				if(bMonoOld != bMonoNew)
+					bSizeChanged = true;
+				else if((bool)textOld != (bool)textNew)
+					bSizeChanged = true;
+				else if(textOld && textNew)
+				{
+					if(bMonoNew)
+					{
+						if(textOld->size() != textNew->size())
+							bSizeChanged = true;
+					}
+					else if(*textOld != *textNew)
+						bSizeChanged = true;
+				}
+			}
 			pRS->TD.displays[row][col] = pNewState;
 		}
 		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetLabel>(pMsg))
@@ -1101,6 +1123,7 @@ int main(int argc, char *argv[]) {
 	init(&iwidth, &iheight);					// Graphics initialization
 
 	struct timeval tval;
+	gettimeofday(&tval, NULL);//Just for handle_clock_messages on first pass
 	struct tm tm_local, tm_utc;
 
 	VGfloat offset = iheight*.05f;
@@ -1128,13 +1151,10 @@ int main(int argc, char *argv[]) {
 		//Handle any queued messages
 		std::queue<std::shared_ptr<ClockMsg> > newMsgs;
 		msgQueue.Get(newMsgs);
-		bool bRecalcTexts = handle_clock_messages(newMsgs, regions) || bRecalcTextsNext;
+		bool bRecalcTexts = handle_clock_messages(newMsgs, regions, tval) || bRecalcTextsNext;
 		bRecalcTextsNext = false;
 		
 		bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(regions);
-		gettimeofday(&tval, NULL);
-		localtime_r(&tval.tv_sec, &tm_local);
-		gmtime_r(&tval.tv_sec, &tm_utc);
 
 		Start(iwidth, iheight);					// Start the picture
 		Background(0, 0, 0);					// Black background
@@ -1207,6 +1227,9 @@ int main(int argc, char *argv[]) {
 			}
 			commsWidth = -1;
 		}
+		gettimeofday(&tval, NULL);
+		localtime_r(&tval.tv_sec, &tm_local);
+		gmtime_r(&tval.tv_sec, &tm_utc);
 		for(const auto & region : regions)
 		{
 			std::string profName;
