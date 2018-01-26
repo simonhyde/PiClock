@@ -654,9 +654,9 @@ public:
 
 	bool UpdateFromMessage(const ClockMsg_SetFontSizeZones &msg)
 	{
-		if(msg.data != m_size_zones)
+		if(!m_size_zones || ( *(msg.pData) != *(m_size_zones)))
 		{
-			m_size_zones = msg.data;
+			m_size_zones = msg.pData;
 			return true;
 		}
 		return false;
@@ -669,12 +669,16 @@ public:
 
 	const std::string & GetZone(int row, int col)
 	{
-		const std::string *pRet;
-		if((row < (int)m_size_zones.size())
-			&& (col < (int)m_size_zones[row].size())
-			&& !(pRet = &(m_size_zones[row][col]))->empty())
+		if(m_size_zones)
 		{
-			return *pRet;
+			const std::string *pRet;
+			const auto & size_zones = *m_size_zones;
+			if((row < (int)size_zones.size())
+				&& (col < (int)size_zones[row].size())
+				&& !(pRet = &(size_zones[row][col]))->empty())
+			{
+				return *pRet;
+			}
 		}
 		return m_default_zone;
 	}
@@ -786,7 +790,7 @@ private:
 	int lastDayOfMonth = -1;
 	std::shared_ptr<std::map<int, VGfloat>> m_hours_x;
 	std::shared_ptr<std::map<int, VGfloat>> m_hours_y;
-	std::vector<std::vector<std::string>> m_size_zones;
+	std::shared_ptr<std::vector<std::vector<std::string>>> m_size_zones;
 	std::string m_default_zone;
 
 	bool m_bAnalogueClock;

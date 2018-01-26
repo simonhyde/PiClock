@@ -208,10 +208,11 @@ public:
 class ClockMsg_SetFontSizeZones : public ClockMsg_Region
 {
 public:
-	std::vector<std::vector<std::string>> data;
+	std::shared_ptr<std::vector<std::vector<std::string>>> pData = std::make_shared<std::vector<std::vector<std::string>>>();
 	ClockMsg_SetFontSizeZones(const std::shared_ptr<int> &region, const std::string & message)
 		:ClockMsg_Region(region, message)
 	{
+		auto &data = *pData;
 		std::string region_prefix = "R" + std::to_string(regionIndex);
 		int i = 0;
 		while(auto pRow = get_arg_p(message, ++i))
@@ -235,9 +236,20 @@ public:
 				start_index = end_index;
 			}
 			while(start_index != std::string::npos);
-
+			//Trim any empty elements off the end of the list
+			unsigned newSize;
+			for(newSize = cols.size(); newSize > 0 && (cols[newSize - 1]).empty(); newSize--)
+				;
+			if(newSize != cols.size())
+				cols.resize(newSize);
 			data.push_back(cols);
 		}
+		//Trim any empty elements off the end of the outer list
+		unsigned newSize;
+		for(newSize = data.size(); newSize > 0 && (data[newSize - 1]).empty(); newSize--)
+				;
+		if(newSize != data.size())
+			data.resize(newSize);
 	}
 };
 
