@@ -1083,6 +1083,8 @@ int main(int argc, char *argv[]) {
 	std::string configFile = "piclock.cfg";
 	std::string last_date_string;
 	RegionsMap regions;
+	//Add 1 region, for when we have no TCP connection
+	regions[0] = std::make_shared<RegionState>();
 	std::map<std::string, int> textSizes;
 	if(argc > 1)
 		configFile = argv[1];
