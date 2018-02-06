@@ -354,21 +354,20 @@ public:
 	{
 		return y + h/2.0f;
 	}
-	void TextMid(const std::string & str, const Fontinfo & font, const int pointSize, std::shared_ptr<std::string> label = std::shared_ptr<std::string>())
+	void TextMid(const std::string & str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>())
 	{
-		auto text_height = TextHeight(font, pointSize);
-		VGfloat text_y = mid_y() - text_height *.33f;
+		VGfloat labelHeight = 0.0f;
 		if(label)
 		{
-			auto labelHeight = TextHeight(FONT_PROP, pointSize/3);
+			if(labelSize <= 0)
+				labelSize = pointSize/3;
+			labelHeight = TextHeight(FONT_PROP, labelSize);
 			auto label_y = y + h - labelHeight;
 			::TextClip(x + m_corner, label_y,
-				label->c_str(), FONT_PROP, pointSize/3, w - m_corner, '.',3);
-			if(text_y + text_height > label_y)
-			{
-				text_y = label_y - text_height*1.05f;
-			}
+				label->c_str(), FONT_PROP, labelSize, w - m_corner, '.',3);
 		}
+		auto text_height = TextHeight(font, pointSize);
+		VGfloat text_y = mid_y() - text_height *.33f - labelHeight*0.5f;
 				
 		::TextMid(mid_x(), text_y, str.c_str(), font, pointSize);
 	}
@@ -410,7 +409,7 @@ int MaxPointSize(VGfloat width, VGfloat height, const std::string & text, const 
 		ret++;
 		if(TextHeight(f, ret) > height)
 			bOverflowed = true;
-		else if(TextWidth(text.c_str(), f, ret) > width)
+		else if(width > 0.0f && TextWidth(text.c_str(), f, ret) > width)
 			bOverflowed = true;
 	}
 	return ret - 1;
@@ -1112,6 +1111,7 @@ int main(int argc, char *argv[]) {
 	//Add 1 region, for when we have no TCP connection
 	regions[0] = std::make_shared<RegionState>();
 	std::map<std::string, int> textSizes;
+	std::map<std::string, int> labelSizes;
 	if(argc > 1)
 		configFile = argv[1];
 	po::variables_map vm;
@@ -1191,13 +1191,13 @@ int main(int argc, char *argv[]) {
 			VGfloat inner_height = display_height * RS.height();
 			VGfloat inner_width = display_width * RS.width();
 
-			if(RS.RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix))
-				bRecalcTexts = true;
+			bRecalcTexts = RS.RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix) || bRecalcTexts;
 			bFirst = false;
 		}
 		if(bRecalcTexts)
 		{
 			textSizes.clear();
+			labelSizes.clear();
 			for(const auto & region : regions)
 			{
 				auto &RS = *region.second;
@@ -1220,9 +1220,16 @@ int main(int argc, char *argv[]) {
 						auto item = RS.TD.displays[row][col];
 						if(!item)
 							continue;
-						auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (item->Label(tval)? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
+						auto label = item->Label(tval);
+						auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
 						if(textSizes[zone] == 0 || textSizes[zone] > maxItemSize)
 							textSizes[zone] = maxItemSize;
+						if(label)
+						{
+							auto maxLabelSize = MaxPointSize(-1, row_height *.2f, label->c_str(), FONT(false));
+							if(labelSizes[zone] == 0 || labelSizes[zone] > maxLabelSize)
+								labelSizes[zone] = maxLabelSize;
+						}
 					}
 				}
 			}
@@ -1406,7 +1413,8 @@ int main(int argc, char *argv[]) {
 							curTally->BG(tval)->Fill();
 							dbTally.Roundrect(row_height/10.0f);
 							curTally->FG(tval)->Fill();
-							dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), textSizes[pRS->GetZone(row,col)], curTally->Label(tval));
+							const auto & zone = pRS->GetZone(row,col);
+							dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
 						}
 					}
 				}
