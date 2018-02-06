@@ -1197,6 +1197,7 @@ int main(int argc, char *argv[]) {
 		}
 		if(bRecalcTexts)
 		{
+			textSizes.clear();
 			for(const auto & region : regions)
 			{
 				auto &RS = *region.second;
