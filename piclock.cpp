@@ -354,6 +354,14 @@ public:
 	{
 		return y + h/2.0f;
 	}
+	void TextMid(const std::shared_ptr<std::string> &str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>())
+	{
+		if(str)
+			TextMid(*str,font,pointSize,labelSize,label);
+		else
+			TextMid(std::string(),font,pointSize,labelSize,label);
+
+	}
 	void TextMid(const std::string & str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>())
 	{
 		VGfloat labelHeight = 0.0f;
@@ -1261,14 +1269,14 @@ int main(int argc, char *argv[]) {
 				std::string time_str = FormatTime(tm_local, tval.tv_usec);
 				if(bDigitalClockPrefix)
 					time_str = prefix + time_str;
-				db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
+				db.TextMidBottom(time_str, FONT_MONO, pointSize);
 			}
 			if(pRS->DigitalUTC(db, pointSize, prefix))
 			{
 				std::string time_str = FormatTime(tm_utc, tval.tv_usec);
 				if(bDigitalClockPrefix)
 					time_str = prefix + time_str;
-				db.TextMidBottom(time_str.c_str(), FONT_MONO, pointSize);
+				db.TextMidBottom(time_str, FONT_MONO, pointSize);
 			}
 			bool bLocal;
 			if(pRS->Date(db, bLocal, pointSize))
@@ -1414,7 +1422,7 @@ int main(int argc, char *argv[]) {
 							dbTally.Roundrect(row_height/10.0f);
 							curTally->FG(tval)->Fill();
 							const auto & zone = pRS->GetZone(row,col);
-							dbTally.TextMid(curTally->Text(tval)->c_str(), FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
+							dbTally.TextMid(curTally->Text(tval), FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
 						}
 					}
 				}
