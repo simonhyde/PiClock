@@ -1303,7 +1303,7 @@ int main(int argc, char *argv[]) {
 				fill_weight = (gpis & 2)? 50:255;
 				pRS->TD.displays[1][0] = std::make_shared<SimpleTallyState>(
 					    TallyColour(fill_weight, fill_weight, fill_weight),
-					    TallyColour(colour_weight, colour_weight*0.55,0),
+					    TallyColour(colour_weight,0,0),
 					    "On Air");
 			}
 
