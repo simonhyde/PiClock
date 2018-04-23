@@ -1,6 +1,8 @@
 #ifndef __PICLOCK_MESSAGES_H
 #define __PICLOCK_MESSAGES_H
 
+#include <b64/decode.h>
+
 std::shared_ptr<std::string> get_arg_p(const std::string & input, int index, bool bTerminated = true)
 {
 	size_t start_index = 0;
@@ -28,6 +30,20 @@ std::string get_arg(const std::string & input, int index, bool bTerminated = tru
 	if(ret)
 		return *ret;
 	return std::string();
+}
+
+//this is probably horribly inefficient, because it gets copied multiple times, but it does work, and
+//it won't be called in our main display thread
+std::string get_arg_b64(const std::string & input, int index, bool bTerminated = true)
+{
+	auto source = get_arg_p(input, index, bTerminated);
+	if(!source)
+		return std::string();
+	base64::decoder dec;
+	std::ostringstream oss;
+	std::istringstream iss(*source);
+	dec.decode(iss,oss);
+	return oss.str();
 }
 
 int get_arg_int(const std::string &input, int index, bool bTerminated = true)
@@ -62,6 +78,7 @@ bool get_arg_bool(const std::string &input, int index, bool bTerminated = true)
 {
 	return get_arg_int(input, index, bTerminated) != 0;
 }
+
 
 class TallyColour
 {
@@ -130,6 +147,35 @@ public:
 	}
 	//To make polymorphic
 	virtual ~ClockMsg() = default;
+};
+
+class ClockMsg_ClearImages : public ClockMsg
+{
+public:
+	ClockMsg_ClearImages()
+	{}
+};
+
+class ClockMsg_StoreImage : public ClockMsg
+{
+public:
+	std::string name;
+	std::shared_ptr<Magick::Blob> pSourceBlob;
+	std::shared_ptr<Magick::Image> pParsedImage;
+	static Magick::Blob base64_to_blob(const std::string & message, int idx)
+	{
+		std::string data = get_arg_b64(message,2,false);
+		return Magick::Blob((void *)data.c_str(), data.size());
+	}
+	ClockMsg_StoreImage(const std::string & message)
+	:name(get_arg(message, 1)),
+	 pSourceBlob(std::make_shared<Magick::Blob>(base64_to_blob(message, 2))),
+	 pParsedImage(std::make_shared<Magick::Image>(*pSourceBlob))
+	{
+		//ImageMagick does scan lines, etc in the opposite order to OpenVG, so flip vertically
+		pParsedImage->flip();
+	}
+
 };
 
 //Because I'm lazy everything is public, should really be read only
@@ -375,6 +421,25 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 {
 	std::string cmd;
 	auto region = ClockMsg::ParseCmd(message, cmd);
+	if(cmd == "CLEARIMAGES")
+		return std::make_shared<ClockMsg_ClearImages>();
+	if(cmd == "STOREIMAGE")
+	{
+		try
+		{
+			return std::make_shared<ClockMsg_StoreImage>(message);
+		}
+		catch(const std::exception &e)
+		{
+			std::cerr << "Caught exception handling STOREIMAGE \"" << e.what() << "\"\n";
+			return std::shared_ptr<ClockMsg>();
+		}
+		catch(...)
+		{
+			std::cerr << "Caught unknown exception handling STOREIMAGE\n";
+			return std::shared_ptr<ClockMsg>();
+		}
+	}
 	if(cmd == "SETGLOBAL")
 		return std::make_shared<ClockMsg_SetGlobal>(message);
 	if(cmd == "SETREGIONCOUNT")

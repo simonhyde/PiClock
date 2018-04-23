@@ -1,6 +1,7 @@
 // OpenVG Clock
 // Simon Hyde <simon.hyde@bbc.co.uk>
 #include <thread>
+#include <condition_variable>
 #include <mutex>
 #include <string>
 #include <fstream>
@@ -21,6 +22,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <openssl/sha.h>
+#include <Magick++.h>
 #include "VG/openvg.h"
 #include "VG/vgu.h"
 #include "fontinfo.h"
@@ -31,6 +33,7 @@
 //piface digital
 #include "pifacedigital.h"
 #include "piclock_messages.h"
+
 
 #define FPS 25
 #define FRAMES 0
@@ -49,7 +52,8 @@ std::vector<std::string> tally_hosts;
 
 class RegionState;
 typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap;
-
+class ScalingImage;
+typedef std::map<std::string, ScalingImage> ImagesMap;
 
 #define FONT_PROP	(SerifTypeface)
 #define FONT_HOURS	(SansTypeface)
@@ -93,7 +97,131 @@ private:
 	std::mutex m_access_mutex;
 };
 
+class ResizedImage: public ClockMsg
+{
+public:
+	std::shared_ptr<Magick::Image> pSource;
+	Magick::Geometry Geom;
+	std::shared_ptr<Magick::Blob> pOutput;
+	std::string Name;
+	ResizedImage(const Magick::Geometry & geom, std::shared_ptr<Magick::Image> & pSrc, const std::string & name)
+	:pSource(pSrc),Geom(geom),Name(name)
+	{}
+	void DoResize(bool quick)
+	{
+		static Magick::Color black = Magick::Color(0,0,0,0);
+		Magick::Image scaled(*pSource);
+		if(quick)
+			scaled.filterType(Magick::PointFilter);
+		scaled.resize(Geom);
+		scaled.extent(Geom, black, Magick::CenterGravity);
+		//Note the std::map will create a new object, before we get a pointer to it
+		pOutput = std::make_shared<Magick::Blob>();
+		scaled.write(pOutput.get(), "RGBA", 8);
+	}
+};
+
+class ResizeQueue
+{
+public:
+	void Add(const std::shared_ptr<ResizedImage> & pMsg)
+	{
+		std::lock_guard<std::mutex> hold_lock(m_access_mutex);
+		m_queue.push(pMsg);
+		m_new_data_condition.notify_all();
+	}
+	std::shared_ptr<ResizedImage> Get()
+	{
+		std::unique_lock<std::mutex> hold_lock(m_access_mutex);
+		while(bRunning && m_queue.empty())
+		{
+			m_new_data_condition.wait(hold_lock);
+		}
+		if(bRunning)
+		{
+			auto front = m_queue.front();
+			m_queue.pop();
+			return front;
+		}
+		return std::shared_ptr<ResizedImage>();
+	}
+	void Abort()
+	{
+		m_new_data_condition.notify_all();
+	}
+private:
+	std::queue<std::shared_ptr<ResizedImage> > m_queue;
+	std::mutex m_access_mutex;
+	std::condition_variable m_new_data_condition;
+};
+
 MessageQueue msgQueue;
+
+ResizeQueue resizeQueue;
+
+void background_resize_thread()
+{
+	while(bRunning)
+	{
+		auto data = resizeQueue.Get();
+		if(data)
+		{
+			data->DoResize(false);
+			msgQueue.Add(data);
+		}
+	}
+}
+
+class ScalingImage
+{
+public:
+	ScalingImage(std::shared_ptr<Magick::Image> pSrc, std::shared_ptr<Magick::Blob> pBlob)
+	:pSource(pSrc), pSourceBlob(pBlob)
+	{}
+	//Empty constructor required for std::map, shouldn't get called;
+	ScalingImage()
+	{}
+	bool IsValid()
+	{
+		return (bool)pSource;
+	}
+	const void *GetImage(int w, int h, const std::string & name)
+	{
+		if(!IsValid())
+			return NULL;
+		Magick::Geometry geom(w, h);
+		const auto & iter = Scaled.find(geom);
+		if(iter != Scaled.end())
+		{
+			return iter->second->data();
+		}
+		else
+		{
+			std::shared_ptr<ResizedImage> pResize = std::make_shared<ResizedImage>(geom, pSource, name);
+			pResize->DoResize(true);
+			UpdateFromResize(pResize);
+			auto ret = pResize->pOutput;
+			resizeQueue.Add(pResize);
+			return ret->data();
+		}
+	}
+	void UpdateFromResize(std::shared_ptr<ResizedImage> pResize)
+	{
+		//Refuse to do this if our image has changed since then...
+		if(pResize && pResize->pOutput && pResize->pSource == pSource)
+			Scaled[pResize->Geom] = pResize->pOutput;
+	}
+	bool IsSameSource(std::shared_ptr<Magick::Blob> pOtherBlob)
+	{
+		return IsValid() && pSourceBlob && pOtherBlob 
+			&& (pOtherBlob->length() == pSourceBlob->length())
+			&& (memcmp(pOtherBlob->data(), pSourceBlob->data(), pSourceBlob->length()) == 0);
+	}
+private:
+	std::shared_ptr<Magick::Image> pSource;
+	std::shared_ptr<Magick::Blob> pSourceBlob;
+	std::map<Magick::Geometry, std::shared_ptr<Magick::Blob> > Scaled;
+};
 
 
 class TallyState
@@ -879,7 +1007,7 @@ int handle_tcp_message(const std::string &message, client & conn)
 	return 1;
 }
 
-bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions, struct timeval & tvCur)
+bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions, ImagesMap & images, struct timeval & tvCur)
 {
 	bool bSizeChanged = false;
 	while(!msgs.empty())
@@ -920,7 +1048,20 @@ bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 			pRS->UpdateFromMessage(std::make_shared<ClockMsg_SetLocation>(std::make_shared<int>(regionIndex), "SETLOCATION:0:0:1:1"));
 		}
 
-		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetRegionCount>(pMsg))
+		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_ClearImages>(pMsg))
+		{
+			images.clear();
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_StoreImage>(pMsg))
+		{
+			if(!images[castCmd->name].IsSameSource(castCmd->pSourceBlob))
+				images[castCmd->name] = ScalingImage(castCmd->pParsedImage, castCmd->pSourceBlob);
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ResizedImage>(pMsg))
+		{
+			images[castCmd->Name].UpdateFromResize(castCmd);
+		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetRegionCount>(pMsg))
 		{
 			if(UpdateCount(regions, castCmd->iCount))
 			{
@@ -1120,6 +1261,7 @@ int main(int argc, char *argv[]) {
 	regions[0] = std::make_shared<RegionState>();
 	std::map<std::string, int> textSizes;
 	std::map<std::string, int> labelSizes;
+	ImagesMap images;
 	if(argc > 1)
 		configFile = argv[1];
 	po::variables_map vm;
@@ -1149,6 +1291,10 @@ int main(int argc, char *argv[]) {
 	pthread_attr_t ntp_attr;
 	pthread_attr_init(&ntp_attr);
 	pthread_create(&ntp_thread, &ntp_attr, &ntp_check_thread, &ntp_state_data);
+	std::thread resize_thread(background_resize_thread);
+	struct sched_param resize_param;
+	resize_param.sched_priority = sched_get_priority_min(SCHED_IDLE);
+	pthread_setschedparam(resize_thread.native_handle(), SCHED_IDLE, &resize_param);
 	if(GPI_MODE == 1)
 		pifacedigital_open(0);
 	else if(GPI_MODE == 2)
@@ -1159,7 +1305,7 @@ int main(int argc, char *argv[]) {
 		//Handle any queued messages
 		std::queue<std::shared_ptr<ClockMsg> > newMsgs;
 		msgQueue.Get(newMsgs);
-		bool bRecalcTexts = handle_clock_messages(newMsgs, regions, tval) || bRecalcTextsNext;
+		bool bRecalcTexts = handle_clock_messages(newMsgs, regions, images, tval) || bRecalcTextsNext;
 		bRecalcTextsNext = false;
 		
 		bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(regions);
@@ -1229,14 +1375,19 @@ int main(int argc, char *argv[]) {
 						if(!item)
 							continue;
 						auto label = item->Label(tval);
-						auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
-						if(textSizes[zone] == 0 || textSizes[zone] > maxItemSize)
-							textSizes[zone] = maxItemSize;
-						if(label)
+						auto text = item->Text(tval);
+						auto iter = images.end();
+						if(text && ((iter = images.find(*text)) == images.end() || !iter->second.IsValid()))
 						{
-							auto maxLabelSize = MaxPointSize(-1, row_height *.2f, label->c_str(), FONT(false));
-							if(labelSizes[zone] == 0 || labelSizes[zone] > maxLabelSize)
-								labelSizes[zone] = maxLabelSize;
+							auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
+							if(textSizes[zone] == 0 || textSizes[zone] > maxItemSize)
+								textSizes[zone] = maxItemSize;
+							if(label)
+							{
+								auto maxLabelSize = MaxPointSize(-1, row_height *.2f, label->c_str(), FONT(false));
+								if(labelSizes[zone] == 0 || labelSizes[zone] > maxLabelSize)
+									labelSizes[zone] = maxLabelSize;
+							}
 						}
 					}
 				}
@@ -1418,11 +1569,23 @@ int main(int argc, char *argv[]) {
 							if(!curTally)
 								continue;
 							DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
-							curTally->BG(tval)->Fill();
-							dbTally.Roundrect(row_height/10.0f);
-							curTally->FG(tval)->Fill();
-							const auto & zone = pRS->GetZone(row,col);
-							dbTally.TextMid(curTally->Text(tval), FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
+							auto text = curTally->Text(tval);
+							auto iter = images.end();
+							if(text && (iter = images.find(*text)) != images.end() && iter->second.IsValid())
+							{
+								int w = (int)dbTally.w;
+								int h = (int)dbTally.h;
+
+								makeimage(dbTally.x, dbTally.y, w, h, (const VGubyte*)iter->second.GetImage(w, h, *text));
+							}
+							else
+							{
+								curTally->BG(tval)->Fill();
+								dbTally.Roundrect(row_height/10.0f);
+								curTally->FG(tval)->Fill();
+								const auto & zone = pRS->GetZone(row,col);
+								dbTally.TextMid(text, FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
+							}
 						}
 					}
 				}
@@ -1562,6 +1725,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	bRunning = 0;
+	resizeQueue.Abort();
 	finish();					            // Graphics cleanup
 	exit(0);
 }

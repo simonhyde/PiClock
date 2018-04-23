@@ -31,6 +31,7 @@ Each command can take 0 or more arguments, as discussed above extra arguments wi
 |bool  |An *int* (as above) holding either 0 (for false) or 1 (for true) |
 |float |Decimal representation of a floating-point value in UTF-8 (or ASCII) string, always parsed in double precision|
 |colour|Hexadecimal representation of a 32-bit RGB in UTF-8/ASCII (basically the same format as HTML colours without the preceding #)
+|b64   |Base64 Encoded binary data (currently only used to send images)
 
 ## Commands
 Commands may refer to the whole display, or to configure a region of the display
@@ -257,3 +258,28 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   |---------|-------|--------|-----------
   |row0     |list   |        |Comma-separated list of zone names for row 0
   |row1     |list   |        |Comma-separated list of zone names for row 1
+
+* **STOREIMAGE**
+
+  ``STOREIMAGE:name:image<CR>``
+  
+  Stores (or updates) an image to be displayed. Whenever a tally indicator
+  has text that equals 'name' then the image in 'image' is drawn instead of
+  text (scaled to fit the tally box).
+
+  When images are scaled to a given size they are first scaled using a quick
+  algorithm which may look rather aliased, they are then scheduled to be
+  re-scaled slowly in the background. Once an image has been scaled to a
+  particular size, PiClock will cache the scaled image until that image is
+  replaced, CLEARIMAGES is sent, or the program quits.
+
+  |Argument |Type   |Default |Description
+  |---------|-------|--------|-----------
+  |name     |string |        |Magic string which will be replaced by image
+  |image    |b64    |        |Base64 encoded binary data of an image file. JPEG and PNG formatted data have been tested, but any format supported by ImageMagick should work.
+
+* **CLEARIMAGES**
+
+  ``CLEARIMAGES``
+
+  Clears any and all stored images.
