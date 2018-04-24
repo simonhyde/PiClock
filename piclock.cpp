@@ -1592,21 +1592,16 @@ int main(int argc, char *argv[]) {
 			}
 			//Done with displays, back to common code...
 			db = pRS->StatusBox(pointSize);
-			if(db.w > 0.0f && db.h > 0.0f)
+			if(db.w > 0.0f && db.h > 0.0f && GPI_MODE == 2)
 			{
 				Fill(127, 127, 127, 1);
-				int quitSize = pointSize/1.5f;
-				Text(db.x, db.y, "Press Ctrl+C to quit", FONT_PROP, quitSize);
-				if(GPI_MODE == 2)
-				{
-					char buf[8192];
-					buf[sizeof(buf)-1] = '\0';
-					if(profName.empty())
-						snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
-					else
-						snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
-					Text(db.x, db.y + TextHeight(FONT_PROP,quitSize)*1.5f, buf, FONT_PROP, pointSize);
-				}
+				char buf[8192];
+				buf[sizeof(buf)-1] = '\0';
+				if(profName.empty())
+					snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
+				else
+					snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
+				Text(db.x, db.y, buf, FONT_PROP, pointSize);
 			}
 			Fill(255,255,255,1);
 			int numbers;
