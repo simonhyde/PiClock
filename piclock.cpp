@@ -104,14 +104,15 @@ public:
 	Magick::Geometry Geom;
 	std::shared_ptr<Magick::Blob> pOutput;
 	std::string Name;
-	ResizedImage(const Magick::Geometry & geom, std::shared_ptr<Magick::Image> & pSrc, const std::string & name)
-	:pSource(pSrc),Geom(geom),Name(name)
+	bool bQuick;
+	ResizedImage(const Magick::Geometry & geom, std::shared_ptr<Magick::Image> & pSrc, const std::string & name, bool quick)
+	:pSource(pSrc),Geom(geom),Name(name), bQuick(quick)
 	{}
-	void DoResize(bool quick)
+	void DoResize()
 	{
 		static Magick::Color black = Magick::Color(0,0,0,0);
 		Magick::Image scaled(*pSource);
-		if(quick)
+		if(bQuick)
 			scaled.filterType(Magick::PointFilter);
 		scaled.resize(Geom);
 		scaled.extent(Geom, black, Magick::CenterGravity);
@@ -166,7 +167,10 @@ void background_resize_thread()
 		auto data = resizeQueue.Get();
 		if(data)
 		{
-			data->DoResize(false);
+			data->DoResize();
+			//If this is a quick resize, then schedule a slow resize too
+			if(data->bQuick)
+				resizeQueue.Add(std::make_shared<ResizedImage>(data->Geom, data->pSource, data->Name, false));
 			msgQueue.Add(data);
 		}
 	}
@@ -193,17 +197,16 @@ public:
 		const auto & iter = Scaled.find(geom);
 		if(iter != Scaled.end())
 		{
-			return iter->second->data();
+			if(iter->second)
+				return iter->second->data();
 		}
 		else
 		{
-			std::shared_ptr<ResizedImage> pResize = std::make_shared<ResizedImage>(geom, pSource, name);
-			pResize->DoResize(true);
-			UpdateFromResize(pResize);
-			auto ret = pResize->pOutput;
+			std::shared_ptr<ResizedImage> pResize = std::make_shared<ResizedImage>(geom, pSource, name, true);
 			resizeQueue.Add(pResize);
-			return ret->data();
+			Scaled[geom] = std::shared_ptr<Magick::Blob>();
 		}
+		return NULL;
 	}
 	void UpdateFromResize(std::shared_ptr<ResizedImage> pResize)
 	{
@@ -1571,14 +1574,18 @@ int main(int argc, char *argv[]) {
 							DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
 							auto text = curTally->Text(tval);
 							auto iter = images.end();
+							const VGubyte * img_data = NULL;
 							if(text && (iter = images.find(*text)) != images.end() && iter->second.IsValid())
 							{
 								int w = (int)dbTally.w;
 								int h = (int)dbTally.h;
-
-								makeimage(dbTally.x, dbTally.y, w, h, (const VGubyte*)iter->second.GetImage(w, h, *text));
+								img_data = (const VGubyte*)iter->second.GetImage(w, h, *text);
+								if(img_data != NULL)
+									makeimage(dbTally.x, dbTally.y, w, h, img_data);
+								else
+									text = std::shared_ptr<std::string>();
 							}
-							else
+							if(img_data == NULL)
 							{
 								curTally->BG(tval)->Fill();
 								dbTally.Roundrect(row_height/10.0f);
