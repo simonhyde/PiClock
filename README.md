@@ -8,12 +8,12 @@ Checkout
 
 Checkout this project by:
 
-	```shell
+```shell
         # Install git if you don't already have it
 	sudo apt-get install git
         # Checkout the main project and it's submodules
 	git clone --recursive https://github.com/simonhyde/PiClock.git
-	```
+```
 
 Build
 -----
