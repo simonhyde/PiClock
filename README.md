@@ -20,21 +20,21 @@ Build
 
 1. First you'll need to install some dependencies (ntpdate is only suggested for runtime):
 
-	```shell
+```shell
 	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev
-	```
+```
 
 2. Compile:
 	
-	```shell
+```shell
 	make
-	```
+```
 
 3. Run:
 
-	```shell
+```shell
 	./piclock
-	```
+```
 
 Clock Unsynchronised
 --------------------
@@ -43,15 +43,15 @@ When ntp notices a large jump in time (such as when first booting up the Raspber
 
 1. Make sure ntpdate is installed:
 
-	```shell
+```shell
 	sudo apt-get install ntpdate
-	```
+```
 
 2. Copy in new script:
 	
-	```shell
+```shell
 	sudo cp if-up.d-ntpdate /etc/network/if-up.d/ntpdate
-	```
+```
 
 Running at startup
 ------------------
@@ -60,36 +60,36 @@ To configure this to run at startup, I did the following:
 
 1. Add a new user to run the clock:
 
-	```shell
+```shell
 	sudo adduser --disabled-password piclock
 	sudo usermod --append --groups spi,video piclock
-	```
+```
 
 2. Make the user profile run the clock:
 
-	```shell
+```shell
 	sudo editor ~piclock/.bashrc
 
 	# And add a line to the end, something like: /home/pi/PiClock/piclock
-	```
+```
 
 3. Make the system auto-login as the piclock user:
 
-	```shell
+```shell
 	sudo editor /etc/systemd/system/autologin@.service
-	```
+```
 
   and change:
 
-  	```
+```
 	ExecStart=-/sbin/agetty --autologin pi --noclear %I $TERM
-	```
+```
 
   to:
 
-	```
+```
 	ExecStart=-/sbin/agetty --autologin piclock --noclear %I $TERM
-	```
+```
 
 Switching to Read Only SD Card
 ------------------------------
