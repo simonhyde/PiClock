@@ -13,7 +13,7 @@ The server must transmit something to the client at least once every 5 seconds. 
 ## Message Format
 All messages are UTF-8, terminated with a carriage return character (13 decimal). They take the format:
 
-CMD:ARG1:ARG2:ARG3:...ARGn&lt;CR&gt;
+`CMD:ARG1:ARG2:ARG3:...ARGn<CR>`
 
 The number of arguments (if any) vary depending on the command, the PiClock will ignore extra arguments added to the end of the command which it doesn't expect (for example from newer versions of the protocol).
 
@@ -283,3 +283,8 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   ``CLEARIMAGES``
 
   Clears any and all stored images.
+
+## Testing
+It's possible to do basic testing of the tally protocol with netcat:
+
+`nc -k -l 6254 -C`
