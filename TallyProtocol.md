@@ -285,6 +285,6 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   Clears any and all stored images.
 
 ## Testing
-It's possible to do basic testing of the tally protocol with netcat:
+It's possible to do basic testing of the tally protocol with netcat, however by default any tally info will disappear after five seconds of comms loss (such as not sending PINGs):
 
 `nc -k -l 6254 -C`
