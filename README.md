@@ -42,6 +42,19 @@ Build
 	./piclock
 ```
 
+
+Failed to add service
+---------------------
+If you get this error when launching PiClock:
+```
+	* failed to add service - already in use?
+```
+
+You'll need to comment out the following line with a hash:
+```
+	dtoverlay=vc4-fkms-v3d
+```
+
 Clock Unsynchronised
 --------------------
 
