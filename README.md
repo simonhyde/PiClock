@@ -24,13 +24,19 @@ Build
 	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev
 ```
 
-2. Compile:
+2. Change to the directory you checked the code out into; probably:
+	
+```shell
+	cd PiClock
+```
+
+3. Compile:
 	
 ```shell
 	make
 ```
 
-3. Run:
+4. Run:
 
 ```shell
 	./piclock
