@@ -3,6 +3,8 @@ PiClock
 
 Simple Clock for the Raspberry Pi, using OpenVG for its output
 
+Please note, this software doesn't currently support the Raspberry Pi 4
+
 Checkout
 --------
 
@@ -24,17 +26,35 @@ Build
 	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev
 ```
 
-2. Compile:
+2. Change to the directory you checked the code out into; probably:
+	
+```shell
+	cd PiClock
+```
+
+3. Compile:
 	
 ```shell
 	make
 ```
 
-3. Run:
+4. Run:
 
 ```shell
 	./piclock
 ```
+
+
+Failed to add service
+---------------------
+If you get this error when launching PiClock:
+```
+	* failed to add service - already in use?
+```
+
+Then you're probably using a Raspberry Pi 4. This software doesn't currently
+support the Raspberry Pi 4 (because the Raspberry Pi 4 doesn't support OpenVG).
+
 
 Clock Unsynchronised
 --------------------
