@@ -3,6 +3,8 @@ PiClock
 
 Simple Clock for the Raspberry Pi, using OpenVG for its output
 
+Please note, this software doesn't currently support the Raspberry Pi 4
+
 Checkout
 --------
 
@@ -50,10 +52,9 @@ If you get this error when launching PiClock:
 	* failed to add service - already in use?
 ```
 
-You'll need to comment out the following line with a hash:
-```
-	dtoverlay=vc4-fkms-v3d
-```
+Then you're probably using a Raspberry Pi 4. This software doesn't currently
+support the Raspberry Pi 4 (because the Raspberry Pi 4 doesn't support OpenVG).
+
 
 Clock Unsynchronised
 --------------------
