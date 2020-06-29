@@ -23,7 +23,7 @@ Build
 1. First you'll need to install some dependencies (ntpdate is only suggested for runtime):
 
 ```shell
-	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev
+	sudo apt-get install libjpeg-dev ntpdate ttf-dejavu libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev ntp
 ```
 
 2. Change to the directory you checked the code out into; probably:
@@ -56,22 +56,11 @@ Then you're probably using a Raspberry Pi 4. This software doesn't currently
 support the Raspberry Pi 4 (because the Raspberry Pi 4 doesn't support OpenVG).
 
 
-Clock Unsynchronised
+Configure NTP
 --------------------
 
-When ntp notices a large jump in time (such as when first booting up the Raspberry Pi), it tells clients it is not synchronised for quite a while (many minutes). To work around this, I run ntpdate to manually crash in the time whenever a new network connection is started up, closing down and then re-starting the main NTP daemon whilst this happens. To do this I have a slightly modified ntpdate script in if-up.d, you can install this update script by:
+You may want to add/change your NTP servers (in /etc/ntp.conf)
 
-1. Make sure ntpdate is installed:
-
-```shell
-	sudo apt-get install ntpdate
-```
-
-2. Copy in new script:
-	
-```shell
-	sudo cp if-up.d-ntpdate /etc/network/if-up.d/ntpdate
-```
 
 Running at startup
 ------------------
@@ -93,10 +82,18 @@ To configure this to run at startup, I did the following:
 	# And add a line to the end, something like: /home/pi/PiClock/piclock
 ```
 
-3. Make the system auto-login as the piclock user:
+3. Enable text-mode autologin using raspi-config:
 
 ```shell
-	sudo editor /etc/systemd/system/autologin@.service
+	sudo raspi-config
+	
+	#Boot Options, Desktop/CLI, Console Autologin
+```
+
+4. Make the system auto-login as the piclock user:
+
+```shell
+	sudo editor /etc/systemd/system/getty@tty1.service.d/autologin.config
 ```
 
   and change:
@@ -110,8 +107,16 @@ To configure this to run at startup, I did the following:
 ```
 	ExecStart=-/sbin/agetty --autologin piclock --noclear %I $TERM
 ```
+  (ie change pi to piclock)
 
 Switching to Read Only SD Card
 ------------------------------
 
-Once you've got everything working, you may want to make the SD card read-only, to prevent future corruption/wearing out the SD card. Instructions for this can be found at https://www.raspberrypi.org/forums/viewtopic.php?p=213440
+Once you've got everything working, you may want to make the SD card read-only, to prevent future corruption/wearing out the SD card. The easiest way to do this nowadays is to use the Overlay FS option built into raspi-config, however this seems to cause the network interface to be accidentally renamed, so you first have to delete the rule that's messing that up:
+
+```shell
+	sudo rm /lib/udev/rules.d/73-usb-net-by-mac.rules
+
+	sudo raspi-config
+	#Advanced, Overlay FS, Enable Overlay FS, and set boot filesystem to write-protected/read-only
+```
