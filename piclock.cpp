@@ -54,6 +54,7 @@ class RegionState;
 typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap;
 class ScalingImage;
 typedef std::map<std::string, ScalingImage> ImagesMap;
+void DrawFrame(float intervalms);
 
 #define FONT_PROP	(SerifTypeface)
 #define FONT_HOURS	(SansTypeface)
@@ -1249,45 +1250,49 @@ void read_settings(const std::string & filename,
 }
 
 
-int main(int argc, char *argv[]) {
 	int iwidth, iheight;
 	fd_set rfds;
 	struct timeval timeout;
 	VGfloat commsWidth = -1;
 	VGfloat commsTextHeight = 0;
 	time_t tm_last_comms_good = 0;
-	timeout.tv_usec = timeout.tv_sec = 0;
 	std::string configFile = "piclock.cfg";
 	std::string last_date_string;
 	RegionsMap regions;
 	//Add 1 region, for when we have no TCP connection
-	regions[0] = std::make_shared<RegionState>();
 	std::map<std::string, int> textSizes;
 	std::map<std::string, int> labelSizes;
 	ImagesMap images;
-	if(argc > 1)
-		configFile = argv[1];
 	po::variables_map vm;
-	read_settings(configFile, vm);
-	FD_ZERO(&rfds);
-	FD_SET(fileno(stdin),&rfds);
-	
-
-	init(&iwidth, &iheight);					// Graphics initialization
-
-	struct timeval tval;
-	gettimeofday(&tval, NULL);//Just for handle_clock_messages on first pass
-	struct tm tm_local, tm_utc;
-
-	VGfloat offset = iheight*.05f;
-
-	srand(time(NULL));
-	int vrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
-	int hrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
 	VGfloat h_offset_pos = 0;
 	VGfloat v_offset_pos = 0;
 	long prev_sec = 0;
+	struct timeval tval;
+	struct tm tm_local, tm_utc;
 	ntpstate_t ntp_state_data;
+	VGfloat offset;
+	int vrate, hrate;
+	bool bRecalcTextsNext = true;
+int main(int argc, char *argv[]) {
+
+	timeout.tv_usec = timeout.tv_sec = 0;
+
+	regions[0] = std::make_shared<RegionState>();
+	FD_ZERO(&rfds);
+	FD_SET(fileno(stdin),&rfds);
+	
+	init(argc, argv, &iwidth, &iheight);					// Graphics initialization
+	if(argc > 1)
+		configFile = argv[1];
+	read_settings(configFile, vm);
+
+	gettimeofday(&tval, NULL);//Just for handle_clock_messages on first pass
+
+	offset = iheight*.05f;
+
+	srand(time(NULL));
+	vrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
+	hrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
 	init_ntp_state();
 	get_ntp_state(&ntp_state_data);
 	pthread_t ntp_thread;
@@ -1302,8 +1307,14 @@ int main(int argc, char *argv[]) {
 		pifacedigital_open(0);
 	else if(GPI_MODE == 2)
 		create_tcp_threads();
-	bool bRecalcTextsNext = true;
-	while(1)
+
+	MainLoop(DrawFrame);
+	bRunning = 0;
+	resizeQueue.Abort();
+	finish();					            // Graphics cleanup
+	exit(0);
+}
+void DrawFrame(float interval)
 	{
 		//Handle any queued messages
 		std::queue<std::shared_ptr<ClockMsg> > newMsgs;
@@ -1725,9 +1736,3 @@ int main(int argc, char *argv[]) {
 		}
 		End();						   			// End the picture
 	}
-
-	bRunning = 0;
-	resizeQueue.Abort();
-	finish();					            // Graphics cleanup
-	exit(0);
-}
