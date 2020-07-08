@@ -3,8 +3,6 @@ PiClock
 
 Simple Clock for the Raspberry Pi, using OpenVG for its output
 
-Please note, this software doesn't currently support the Raspberry Pi 4
-
 Checkout
 --------
 
@@ -52,8 +50,11 @@ If you get this error when launching PiClock:
 	* failed to add service - already in use?
 ```
 
-Then you're probably using a Raspberry Pi 4. This software doesn't currently
-support the Raspberry Pi 4 (because the Raspberry Pi 4 doesn't support OpenVG).
+Then you're probably using a Raspberry Pi 4, and you've launched the old OVG
+version directly.
+
+The version which uses the Pi's OpenVG support directly isn't supported on
+the Raspberry Pi 4, but the clock should work with an OpenGL shim in the way.
 
 
 Configure NTP
