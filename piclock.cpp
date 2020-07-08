@@ -1281,7 +1281,7 @@ int main(int argc, char *argv[]) {
 	FD_ZERO(&rfds);
 	FD_SET(fileno(stdin),&rfds);
 	
-	init(argc, argv, &iwidth, &iheight);					// Graphics initialization
+	init(&argc, argv, &iwidth, &iheight);					// Graphics initialization
 	if(argc > 1)
 		configFile = argv[1];
 	read_settings(configFile, vm);
