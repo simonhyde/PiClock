@@ -7,4 +7,4 @@ if grep -q '^Raspberry Pi [CZM23]' /proc/device-tree/model && ! grep -q ',4-mode
 	exec "$BASEPATH/piclockOVG" "$@"
 fi
 echo "Post-V4 Raspberry Pi, or other platform detected...running in X/OpenGL"
-exec "/usr/bin/startx" "$BASEPATH/piclockOGL" "$@"
+exec "/usr/bin/startx" "$BASEPATH/piclockOGL_noblank" "$@"

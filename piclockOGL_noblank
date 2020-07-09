@@ -1,0 +1,7 @@
+#!/bin/sh
+#Simple script to turn of all blanking/DPMS before launching the clock
+BASEPATH="$(dirname $0)"
+
+xset s off -dpms
+
+exec "$BASEPATH/piclockOGL" "$@"
