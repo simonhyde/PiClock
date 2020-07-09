@@ -1266,36 +1266,21 @@ void KeyCallback(unsigned char key, int x, int y)
 }
 
 
-	int iwidth, iheight;
-	fd_set rfds;
-	struct timeval timeout;
-	VGfloat commsWidth = -1;
-	VGfloat commsTextHeight = 0;
-	time_t tm_last_comms_good = 0;
-	std::string configFile = "piclock.cfg";
-	std::string last_date_string;
-	RegionsMap regions;
-	//Add 1 region, for when we have no TCP connection
-	std::map<std::string, int> textSizes;
-	std::map<std::string, int> labelSizes;
-	ImagesMap images;
-	po::variables_map vm;
-	VGfloat h_offset_pos = 0;
-	VGfloat v_offset_pos = 0;
-	long prev_sec = 0;
-	struct timeval tval;
-	struct tm tm_local, tm_utc;
-	ntpstate_t ntp_state_data;
-	VGfloat offset;
-	int vrate, hrate;
-	bool bRecalcTextsNext = true;
+/* All variables which used to be local to main(), which we've had
+   to make global now that drawing is done via a callback
+ */
+static int iwidth, iheight;
+static po::variables_map vm;
+static struct timeval tval;
+static ntpstate_t ntp_state_data;
+static VGfloat offset;
+static int vrate;
+static int hrate;
+
 int main(int argc, char *argv[]) {
 
-	timeout.tv_usec = timeout.tv_sec = 0;
+	std::string configFile = "piclock.cfg";
 
-	regions[0] = std::make_shared<RegionState>();
-	FD_ZERO(&rfds);
-	FD_SET(fileno(stdin),&rfds);
 	
 	init(&argc, argv, &iwidth, &iheight);					// Graphics initialization
 	if(argc > 1)
@@ -1328,425 +1313,450 @@ int main(int argc, char *argv[]) {
 	//Shouldn't ever get here, but no harm in cleaning up anyway
 	cleanup();
 }
+
 void DrawFrame(float interval)
+{
+	static VGfloat commsWidth = -1;
+	static VGfloat commsTextHeight = 0;
+	static RegionsMap regions;
+
+	static std::map<std::string, int> textSizes;
+	static std::map<std::string, int> labelSizes;
+
+	static time_t tm_last_comms_good = 0;
+
+	static ImagesMap images;
+
+	static VGfloat h_offset_pos = 0;
+	static VGfloat v_offset_pos = 0;
+
+	static long prev_sec = 0;
+
+	static struct tm tm_local, tm_utc;
+
+	static bool bRecalcTextsNext = true;
+
+
+	if(regions.empty())
+		//Add 1 region, for when we have no TCP connection, should probably only happen on first pass
+		regions[0] = std::make_shared<RegionState>();
+	//Handle any queued messages
+	std::queue<std::shared_ptr<ClockMsg> > newMsgs;
+	msgQueue.Get(newMsgs);
+	bool bRecalcTexts = handle_clock_messages(newMsgs, regions, images, tval) || bRecalcTextsNext;
+	bRecalcTextsNext = false;
+	
+	bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(regions);
+
+	Start(iwidth, iheight);					// Start the picture
+	Background(0, 0, 0);					// Black background
+	VGfloat display_width = iwidth;
+	VGfloat display_height = iheight;
+	if(globalState.ScreenSaver())
 	{
-		//Handle any queued messages
-		std::queue<std::shared_ptr<ClockMsg> > newMsgs;
-		msgQueue.Get(newMsgs);
-		bool bRecalcTexts = handle_clock_messages(newMsgs, regions, images, tval) || bRecalcTextsNext;
-		bRecalcTextsNext = false;
-		
-		bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(regions);
+		display_width -= offset;
+		display_height -= offset;
+	}
+	if(globalState.RotationReqd(display_width,display_height))
+	{
+		Rotate(90);
+		//After rotating our output has now disappeared down below our co-ordinate space, so translate our co-ordinate space down to find it...
+		Translate(0,-iwidth);
+		std::swap(display_width,display_height);
+	}
 
-		Start(iwidth, iheight);					// Start the picture
-		Background(0, 0, 0);					// Black background
-		VGfloat display_width = iwidth;
-		VGfloat display_height = iheight;
-		if(globalState.ScreenSaver())
+	//Screen saver offsets...
+	if(globalState.ScreenSaver())
+	{
+		if(tval.tv_sec != prev_sec)
 		{
-			display_width -= offset;
-			display_height -= offset;
+			prev_sec =  tval.tv_sec;
+			h_offset_pos = abs(prev_sec%(hrate*2) - hrate)*offset/hrate;
+			v_offset_pos = abs(prev_sec%(vrate*2) - vrate)*offset/vrate;
 		}
-		if(globalState.RotationReqd(display_width,display_height))
-		{
-			Rotate(90);
-			//After rotating our output has now disappeared down below our co-ordinate space, so translate our co-ordinate space down to find it...
-			Translate(0,-iwidth);
-			std::swap(display_width,display_height);
-		}
+		Translate(h_offset_pos, v_offset_pos);
+	}
+	bool bFirst = true;
+	for(const auto & region : regions)
+	{
+		auto &RS = *region.second;
+		VGfloat inner_height = display_height * RS.height();
+		VGfloat inner_width = display_width * RS.width();
 
-		//Screen saver offsets...
-		if(globalState.ScreenSaver())
-		{
-			if(tval.tv_sec != prev_sec)
-			{
-				prev_sec =  tval.tv_sec;
-				h_offset_pos = abs(prev_sec%(hrate*2) - hrate)*offset/hrate;
-				v_offset_pos = abs(prev_sec%(vrate*2) - vrate)*offset/vrate;
-			}
-			Translate(h_offset_pos, v_offset_pos);
-		}
-		bool bFirst = true;
+		bRecalcTexts = RS.RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix) || bRecalcTexts;
+		bFirst = false;
+	}
+	if(bRecalcTexts)
+	{
+		textSizes.clear();
+		labelSizes.clear();
 		for(const auto & region : regions)
 		{
 			auto &RS = *region.second;
-			VGfloat inner_height = display_height * RS.height();
-			VGfloat inner_width = display_width * RS.width();
+			RS.SetDefaultZone("R" + std::to_string(region.first));
+			DisplayBox db = RS.TallyBox();
+			VGfloat row_height = (db.h)/((VGfloat)RS.TD.nRows);
+			VGfloat col_width_default = db.w/((VGfloat)RS.TD.nCols_default);
 
-			bRecalcTexts = RS.RecalcDimensions(tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix) || bRecalcTexts;
-			bFirst = false;
-		}
-		if(bRecalcTexts)
-		{
-			textSizes.clear();
-			labelSizes.clear();
-			for(const auto & region : regions)
+			for(int row = 0; row < RS.TD.nRows; row++)
 			{
-				auto &RS = *region.second;
-				RS.SetDefaultZone("R" + std::to_string(region.first));
-				DisplayBox db = RS.TallyBox();
-				VGfloat row_height = (db.h)/((VGfloat)RS.TD.nRows);
-				VGfloat col_width_default = db.w/((VGfloat)RS.TD.nCols_default);
-
-				for(int row = 0; row < RS.TD.nRows; row++)
+				int col_count = RS.TD.nCols[row];
+				VGfloat col_width = col_width_default;
+				if(col_count <= 0)
+					col_count = RS.TD.nCols_default;
+				else
+					col_width = db.w/((VGfloat)col_count);
+				for(int col = 0; col < col_count; col++)
 				{
-					int col_count = RS.TD.nCols[row];
+					const std::string & zone = RS.GetZone(row, col);
+					auto item = RS.TD.displays[row][col];
+					if(!item)
+						continue;
+					auto label = item->Label(tval);
+					auto text = item->Text(tval);
+					auto iter = images.end();
+					if(text && ((iter = images.find(*text)) == images.end() || !iter->second.IsValid()))
+					{
+						auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
+						if(textSizes[zone] == 0 || textSizes[zone] > maxItemSize)
+							textSizes[zone] = maxItemSize;
+						if(label)
+						{
+							auto maxLabelSize = MaxPointSize(-1, row_height *.2f, label->c_str(), FONT(false));
+							if(labelSizes[zone] == 0 || labelSizes[zone] > maxLabelSize)
+								labelSizes[zone] = maxLabelSize;
+						}
+					}
+				}
+			}
+		}
+		commsWidth = -1;
+	}
+	gettimeofday(&tval, NULL);
+	localtime_r(&tval.tv_sec, &tm_local);
+	gmtime_r(&tval.tv_sec, &tm_utc);
+	for(const auto & region : regions)
+	{
+		std::string profName;
+		int i;
+		std::shared_ptr<RegionState> pRS = region.second;
+
+		VGfloat return_x = display_width *pRS->x();
+		VGfloat return_y = display_height *pRS->y();
+		Translate(return_x, return_y);
+
+		Fill(255, 255, 255, 1);					// white text
+		Stroke(255, 255, 255, 1);				// White strokes
+		StrokeWidth(0);//Don't draw strokes until we've moved onto the analogue clock
+
+		//Write out the text
+		DisplayBox db;
+		int pointSize;
+		std::string prefix;
+		if(pRS->DigitalLocal(db, pointSize, prefix))
+		{
+			std::string time_str = FormatTime(tm_local, tval.tv_usec);
+			if(bDigitalClockPrefix)
+				time_str = prefix + time_str;
+			db.TextMidBottom(time_str, FONT_MONO, pointSize);
+		}
+		if(pRS->DigitalUTC(db, pointSize, prefix))
+		{
+			std::string time_str = FormatTime(tm_utc, tval.tv_usec);
+			if(bDigitalClockPrefix)
+				time_str = prefix + time_str;
+			db.TextMidBottom(time_str, FONT_MONO, pointSize);
+		}
+		bool bLocal;
+		if(pRS->Date(db, bLocal, pointSize))
+		{
+			db.TextMidBottom(FormatDate(bLocal? tm_local: tm_utc),
+						FONT_PROP, pointSize);
+		}
+
+		if(GPI_MODE == 1)
+		{
+			if(pRS->TD.nRows != 2)
+				bRecalcTextsNext = true;
+			pRS->TD.nRows = 2;
+			pRS->TD.nCols_default = 1;
+			pRS->TD.nCols.empty();
+			uint8_t gpis = pifacedigital_read_reg(INPUT,0);
+			uint8_t colour_weight = (gpis & 1) ? 50:255;
+			uint8_t fill_weight = (gpis & 1)? 50:255;
+			pRS->TD.displays[0][0] = std::make_shared<SimpleTallyState>(
+				    TallyColour(fill_weight, fill_weight, fill_weight),
+				    TallyColour(colour_weight, colour_weight*0.55,0),
+				    "Mic Live");
+			colour_weight = (gpis & 2) ? 50:255;
+			fill_weight = (gpis & 2)? 50:255;
+			pRS->TD.displays[1][0] = std::make_shared<SimpleTallyState>(
+				    TallyColour(fill_weight, fill_weight, fill_weight),
+				    TallyColour(colour_weight,0,0),
+				    "On Air");
+		}
+
+		//Draw NTP sync status
+		db = pRS->StatusBox(pointSize);
+		if(db.w > 0.0f && db.h > 0.0f)
+		{
+			Fill(255,255,255,1);
+			const char * sync_text;
+			if(ntp_state_data.status == 0)
+			{
+				Fill(0,100,0,1);
+				sync_text = "Synchronised";
+			}
+			else
+			{
+				/* flash between red and purple once a second */
+				Fill(120,0,(tval.tv_sec %2)*120,1);
+				if(ntp_state_data.status == 1)
+					sync_text = "Synchronising..";
+				else
+					sync_text = "Unknown Synch!";
+			}
+			const char * header_text = "NTP-Derived Clock";
+			auto statusBoxLen = std::max(TextWidth(sync_text, FONT_PROP, pointSize),
+						     TextWidth(header_text, FONT_PROP, pointSize))*1.1f;
+			auto statusTextHeight = TextHeight(FONT_PROP, pointSize);
+			//Draw a box around NTP status
+			Rect(db.x + db.w - statusBoxLen, db.y, statusBoxLen, db.h);
+			Fill(200,200,200,1);
+			//2 bits of text
+			TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight *.5f, sync_text, FONT_PROP, pointSize);
+			TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight*1.8f, header_text, FONT_PROP, pointSize);
+
+			db.w -= statusBoxLen;
+
+			if(GPI_MODE == 2)
+			{
+				//Draw comms status
+				if(commsWidth < 0)
+				{
+					commsWidth =
+						std::max(TextWidth("Comms OK", FONT_PROP, pointSize),
+
+							 TextWidth("Comms Failed", FONT_PROP, pointSize));
+					for(unsigned int window = 0; window < tally_hosts.size(); window++)
+					{
+						char buf[512];
+						buf[511] = '\0';
+						snprintf(buf, 511, "Tally Server %d", window + 1);
+						commsWidth = std::max(commsWidth, TextWidth(buf, FONT_PROP, pointSize));
+					}
+					commsWidth *= 1.2f;
+					commsTextHeight = TextHeight(FONT_PROP, pointSize);
+				}
+				bool bAnyComms = false;
+				for(unsigned int window = 0; window < tally_hosts.size(); window++)
+				{
+					bAnyComms = bAnyComms || bComms[window];
+					if(bComms[window])
+						Fill(0,100,0,1);
+					else
+						Fill(190,0,0,1);
+					VGfloat base_x = db.x + db.w - commsWidth * (VGfloat)(tally_hosts.size()-window);
+					VGfloat base_y = db.y;
+					Rect( base_x, base_y, commsWidth, db.h);
+					Fill(200,200,200,1);
+					char buf[512];
+					buf[511] = '\0';
+					base_x += commsWidth*.5f;
+					snprintf(buf, 511, "Tally Server %d", window + 1);
+					TextMid(base_x, base_y + commsTextHeight*1.8f, buf, FONT_PROP, pointSize);
+					snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
+					TextMid(base_x, base_y + commsTextHeight*0.4f, buf, FONT_PROP, pointSize);
+				}
+				if(bAnyComms)
+				{
+					tm_last_comms_good = tval.tv_sec;
+				}
+				//Stop showing stuff after 5 seconds of comms failed...
+				else if(tm_last_comms_good < tval.tv_sec - 5)
+				{
+					for(auto & reg: regions)
+					{
+						reg.second->TD.clear();
+					}
+				}
+			}
+		}
+		if(GPI_MODE)
+		{
+			profName = pRS->TD.sProfName;
+			if(pRS->TD.nRows > 0)
+			{
+				DisplayBox db = pRS->TallyBox();
+				VGfloat row_height = (db.h)/((VGfloat)pRS->TD.nRows);
+				VGfloat buffer = row_height*.02f;
+				VGfloat col_width_default = db.w/((VGfloat)pRS->TD.nCols_default);
+				//float y_offset = height/10.0f;
+				for(int row = 0; row < pRS->TD.nRows; row++)
+				{
+					VGfloat base_y = ((VGfloat)row)*row_height + db.y;
+					int col_count = pRS->TD.nCols[row];
 					VGfloat col_width = col_width_default;
 					if(col_count <= 0)
-						col_count = RS.TD.nCols_default;
+						col_count = pRS->TD.nCols_default;
 					else
 						col_width = db.w/((VGfloat)col_count);
 					for(int col = 0; col < col_count; col++)
 					{
-						const std::string & zone = RS.GetZone(row, col);
-						auto item = RS.TD.displays[row][col];
-						if(!item)
+						auto curTally = pRS->TD.displays[row][col];
+						if(!curTally)
 							continue;
-						auto label = item->Label(tval);
-						auto text = item->Text(tval);
+						DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
+						auto text = curTally->Text(tval);
 						auto iter = images.end();
-						if(text && ((iter = images.find(*text)) == images.end() || !iter->second.IsValid()))
+						const VGubyte * img_data = NULL;
+						if(text && (iter = images.find(*text)) != images.end() && iter->second.IsValid())
 						{
-							auto maxItemSize = MaxPointSize(col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
-							if(textSizes[zone] == 0 || textSizes[zone] > maxItemSize)
-								textSizes[zone] = maxItemSize;
-							if(label)
-							{
-								auto maxLabelSize = MaxPointSize(-1, row_height *.2f, label->c_str(), FONT(false));
-								if(labelSizes[zone] == 0 || labelSizes[zone] > maxLabelSize)
-									labelSizes[zone] = maxLabelSize;
-							}
+							int w = (int)dbTally.w;
+							int h = (int)dbTally.h;
+							img_data = (const VGubyte*)iter->second.GetImage(w, h, *text);
+							if(img_data != NULL)
+								makeimage(dbTally.x, dbTally.y, w, h, img_data);
+							else
+								text = std::shared_ptr<std::string>();
+						}
+						if(img_data == NULL)
+						{
+							curTally->BG(tval)->Fill();
+							dbTally.Roundrect(row_height/10.0f);
+							curTally->FG(tval)->Fill();
+							const auto & zone = pRS->GetZone(row,col);
+							dbTally.TextMid(text, FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
 						}
 					}
 				}
 			}
-			commsWidth = -1;
 		}
-		gettimeofday(&tval, NULL);
-		localtime_r(&tval.tv_sec, &tm_local);
-		gmtime_r(&tval.tv_sec, &tm_utc);
-		for(const auto & region : regions)
+		//Done with displays, back to common code...
+		db = pRS->StatusBox(pointSize);
+		if(db.w > 0.0f && db.h > 0.0f && GPI_MODE == 2)
 		{
-			std::string profName;
-			int i;
-			std::shared_ptr<RegionState> pRS = region.second;
+			Fill(127, 127, 127, 1);
+			char buf[8192];
+			buf[sizeof(buf)-1] = '\0';
+			if(profName.empty())
+				snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
+			else
+				snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
+			Text(db.x, db.y, buf, FONT_PROP, pointSize);
+		}
+		Fill(255,255,255,1);
+		int numbers;
+		std::shared_ptr<const std::map<int, VGfloat>> hours_x;
+		std::shared_ptr<const std::map<int, VGfloat>> hours_y;
+		if(pRS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
+		{
+			//Right, now start drawing the clock
 
-			VGfloat return_x = display_width *pRS->x();
-			VGfloat return_y = display_height *pRS->y();
-			Translate(return_x, return_y);
+			//Move to the centre of the clock
+			VGfloat move_x = db.x + db.w/2.0f;
+			VGfloat move_y = db.y + db.h/2.0f;
+			
+			Translate(move_x, move_y);
+			return_x += move_x;
+			return_y += move_y;
 
-			Fill(255, 255, 255, 1);					// white text
-			Stroke(255, 255, 255, 1);				// White strokes
-			StrokeWidth(0);//Don't draw strokes until we've moved onto the analogue clock
-
-			//Write out the text
-			DisplayBox db;
-			int pointSize;
-			std::string prefix;
-			if(pRS->DigitalLocal(db, pointSize, prefix))
-			{
-				std::string time_str = FormatTime(tm_local, tval.tv_usec);
-				if(bDigitalClockPrefix)
-					time_str = prefix + time_str;
-				db.TextMidBottom(time_str, FONT_MONO, pointSize);
-			}
-			if(pRS->DigitalUTC(db, pointSize, prefix))
-			{
-				std::string time_str = FormatTime(tm_utc, tval.tv_usec);
-				if(bDigitalClockPrefix)
-					time_str = prefix + time_str;
-				db.TextMidBottom(time_str, FONT_MONO, pointSize);
-			}
-			bool bLocal;
-			if(pRS->Date(db, bLocal, pointSize))
-			{
-				db.TextMidBottom(FormatDate(bLocal? tm_local: tm_utc),
-							FONT_PROP, pointSize);
-			}
-
-			if(GPI_MODE == 1)
-			{
-				if(pRS->TD.nRows != 2)
-					bRecalcTextsNext = true;
-				pRS->TD.nRows = 2;
-				pRS->TD.nCols_default = 1;
-				pRS->TD.nCols.empty();
-				uint8_t gpis = pifacedigital_read_reg(INPUT,0);
-				uint8_t colour_weight = (gpis & 1) ? 50:255;
-				uint8_t fill_weight = (gpis & 1)? 50:255;
-				pRS->TD.displays[0][0] = std::make_shared<SimpleTallyState>(
-					    TallyColour(fill_weight, fill_weight, fill_weight),
-					    TallyColour(colour_weight, colour_weight*0.55,0),
-					    "Mic Live");
-				colour_weight = (gpis & 2) ? 50:255;
-				fill_weight = (gpis & 2)? 50:255;
-				pRS->TD.displays[1][0] = std::make_shared<SimpleTallyState>(
-					    TallyColour(fill_weight, fill_weight, fill_weight),
-					    TallyColour(colour_weight,0,0),
-					    "On Air");
-			}
-
-			//Draw NTP sync status
-			db = pRS->StatusBox(pointSize);
-			if(db.w > 0.0f && db.h > 0.0f)
-			{
-				Fill(255,255,255,1);
-				const char * sync_text;
-				if(ntp_state_data.status == 0)
+			if(numbers)
+				//Write out hour labels around edge of clock
+				for(i = 0; i < 12; i++)
 				{
-					Fill(0,100,0,1);
-					sync_text = "Synchronised";
+					char buf[5];
+					sprintf(buf, "%d", i? i:12);
+					TextMid(hours_y->at(i),hours_x->at(i), buf, FONT_HOURS, db.h/15.0f);
 				}
-				else
-				{
-					/* flash between red and purple once a second */
-					Fill(120,0,(tval.tv_sec %2)*120,1);
-					if(ntp_state_data.status == 1)
-						sync_text = "Synchronising..";
-					else
-						sync_text = "Unknown Synch!";
-				}
-				const char * header_text = "NTP-Derived Clock";
-				auto statusBoxLen = std::max(TextWidth(sync_text, FONT_PROP, pointSize),
-							     TextWidth(header_text, FONT_PROP, pointSize))*1.1f;
-				auto statusTextHeight = TextHeight(FONT_PROP, pointSize);
-				//Draw a box around NTP status
-				Rect(db.x + db.w - statusBoxLen, db.y, statusBoxLen, db.h);
-				Fill(200,200,200,1);
-				//2 bits of text
-				TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight *.5f, sync_text, FONT_PROP, pointSize);
-				TextMid(db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight*1.8f, header_text, FONT_PROP, pointSize);
-
-				db.w -= statusBoxLen;
-
-				if(GPI_MODE == 2)
-				{
-					//Draw comms status
-					if(commsWidth < 0)
-					{
-						commsWidth =
-							std::max(TextWidth("Comms OK", FONT_PROP, pointSize),
-
-								 TextWidth("Comms Failed", FONT_PROP, pointSize));
-						for(unsigned int window = 0; window < tally_hosts.size(); window++)
-						{
-							char buf[512];
-							buf[511] = '\0';
-							snprintf(buf, 511, "Tally Server %d", window + 1);
-							commsWidth = std::max(commsWidth, TextWidth(buf, FONT_PROP, pointSize));
-						}
-						commsWidth *= 1.2f;
-						commsTextHeight = TextHeight(FONT_PROP, pointSize);
-					}
-					bool bAnyComms = false;
-					for(unsigned int window = 0; window < tally_hosts.size(); window++)
-					{
-						bAnyComms = bAnyComms || bComms[window];
-						if(bComms[window])
-							Fill(0,100,0,1);
-						else
-							Fill(190,0,0,1);
-						VGfloat base_x = db.x + db.w - commsWidth * (VGfloat)(tally_hosts.size()-window);
-						VGfloat base_y = db.y;
-						Rect( base_x, base_y, commsWidth, db.h);
-						Fill(200,200,200,1);
-						char buf[512];
-						buf[511] = '\0';
-						base_x += commsWidth*.5f;
-						snprintf(buf, 511, "Tally Server %d", window + 1);
-						TextMid(base_x, base_y + commsTextHeight*1.8f, buf, FONT_PROP, pointSize);
-						snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
-						TextMid(base_x, base_y + commsTextHeight*0.4f, buf, FONT_PROP, pointSize);
-					}
-					if(bAnyComms)
-					{
-						tm_last_comms_good = tval.tv_sec;
-					}
-					//Stop showing stuff after 5 seconds of comms failed...
-					else if(tm_last_comms_good < tval.tv_sec - 5)
-					{
-						for(auto & reg: regions)
-						{
-							reg.second->TD.clear();
-						}
-					}
-				}
-			}
-			if(GPI_MODE)
+			//Go around drawing dashes around edge of clock
+			StrokeWidth(db.w/100.0f);
+			VGfloat start, end_short, end_long;
+			VGfloat min_dim = std::min(db.h,db.w);
+			if(numbers == 1)
 			{
-				profName = pRS->TD.sProfName;
-				if(pRS->TD.nRows > 0)
-				{
-					DisplayBox db = pRS->TallyBox();
-					VGfloat row_height = (db.h)/((VGfloat)pRS->TD.nRows);
-					VGfloat buffer = row_height*.02f;
-					VGfloat col_width_default = db.w/((VGfloat)pRS->TD.nCols_default);
-					//float y_offset = height/10.0f;
-					for(int row = 0; row < pRS->TD.nRows; row++)
-					{
-						VGfloat base_y = ((VGfloat)row)*row_height + db.y;
-						int col_count = pRS->TD.nCols[row];
-						VGfloat col_width = col_width_default;
-						if(col_count <= 0)
-							col_count = pRS->TD.nCols_default;
-						else
-							col_width = db.w/((VGfloat)col_count);
-						for(int col = 0; col < col_count; col++)
-						{
-							auto curTally = pRS->TD.displays[row][col];
-							if(!curTally)
-								continue;
-							DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
-							auto text = curTally->Text(tval);
-							auto iter = images.end();
-							const VGubyte * img_data = NULL;
-							if(text && (iter = images.find(*text)) != images.end() && iter->second.IsValid())
-							{
-								int w = (int)dbTally.w;
-								int h = (int)dbTally.h;
-								img_data = (const VGubyte*)iter->second.GetImage(w, h, *text);
-								if(img_data != NULL)
-									makeimage(dbTally.x, dbTally.y, w, h, img_data);
-								else
-									text = std::shared_ptr<std::string>();
-							}
-							if(img_data == NULL)
-							{
-								curTally->BG(tval)->Fill();
-								dbTally.Roundrect(row_height/10.0f);
-								curTally->FG(tval)->Fill();
-								const auto & zone = pRS->GetZone(row,col);
-								dbTally.TextMid(text, FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
-							}
-						}
-					}
-				}
+				start = min_dim *7.5f/20.0f;
+				end_short = min_dim *6.7f/20.0f;
+				end_long = min_dim *6.3f/20.0f;
 			}
-			//Done with displays, back to common code...
-			db = pRS->StatusBox(pointSize);
-			if(db.w > 0.0f && db.h > 0.0f && GPI_MODE == 2)
+			else
 			{
-				Fill(127, 127, 127, 1);
-				char buf[8192];
-				buf[sizeof(buf)-1] = '\0';
-				if(profName.empty())
-					snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
-				else
-					snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
-				Text(db.x, db.y, buf, FONT_PROP, pointSize);
+				start = min_dim *9.5f/20.0f;
+				end_short = min_dim *8.8f/20.0f;
+				end_long = min_dim *8.4f/20.0f;
 			}
-			Fill(255,255,255,1);
-			int numbers;
-			std::shared_ptr<const std::map<int, VGfloat>> hours_x;
-			std::shared_ptr<const std::map<int, VGfloat>> hours_y;
-			if(pRS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
-			{
-				//Right, now start drawing the clock
-
-				//Move to the centre of the clock
-				VGfloat move_x = db.x + db.w/2.0f;
-				VGfloat move_y = db.y + db.h/2.0f;
-				
-				Translate(move_x, move_y);
-				return_x += move_x;
-				return_y += move_y;
-
-				if(numbers)
-					//Write out hour labels around edge of clock
-					for(i = 0; i < 12; i++)
-					{
-						char buf[5];
-						sprintf(buf, "%d", i? i:12);
-						TextMid(hours_y->at(i),hours_x->at(i), buf, FONT_HOURS, db.h/15.0f);
-					}
-				//Go around drawing dashes around edge of clock
-				StrokeWidth(db.w/100.0f);
-				VGfloat start, end_short, end_long;
-				VGfloat min_dim = std::min(db.h,db.w);
-				if(numbers == 1)
-				{
-					start = min_dim *7.5f/20.0f;
-					end_short = min_dim *6.7f/20.0f;
-					end_long = min_dim *6.3f/20.0f;
-				}
-				else
-				{
-					start = min_dim *9.5f/20.0f;
-					end_short = min_dim *8.8f/20.0f;
-					end_long = min_dim *8.4f/20.0f;
-				}
 #ifndef NO_COLOUR_CHANGE
-				Stroke(255,0,0,1);
+			Stroke(255,0,0,1);
 #endif
 #define tm_now	(bLocal? tm_local : tm_utc)
-				//As we go around we actually keep drawing in the same place every time, but we keep rotating the co-ordinate space around the centre point of the clock...
-				for(i = 0; i < 60; i++)
-				{
-					if((i %5) == 0)
-						Line(0, start, 0, end_long);
-					else
-						Line(0, start, 0, end_short);
-					Rotate(-6);
+			//As we go around we actually keep drawing in the same place every time, but we keep rotating the co-ordinate space around the centre point of the clock...
+			for(i = 0; i < 60; i++)
+			{
+				if((i %5) == 0)
+					Line(0, start, 0, end_long);
+				else
+					Line(0, start, 0, end_short);
+				Rotate(-6);
 #ifndef NO_COLOUR_CHANGE
-					//Fade red slowly out over first second
-					if(i == tm_now.tm_sec)
-					{
-						if(i < 1)
-						{
-							//Example to fade over 2 seconds...
-							//VGfloat fade = 128.0f * tm_now.tm_sec +  127.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
-							VGfloat fade = 255.0f * ((VGfloat)tval.tv_usec)/200000.0f;
-							if(fade > 255.0f)
-								fade = 255.0f;
-							Stroke(255, fade, fade, 1);
-						}
-						else
-							Stroke(255,255,255,1);
-					}
-#endif
-				}
-				Stroke(255,255,255,1);
-				//Again, rotate co-ordinate space so we're just drawing an upright line every time...
-				StrokeWidth(db.w/200.0f);
-				//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
-				VGfloat sec_rotation = -(6.0f * tm_now.tm_sec);
-				VGfloat sec_part = sec_rotation;
-				if(tval.tv_usec > MOVE_HAND_AT)
-					sec_rotation -= ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
-				//Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
-				sec_part -= ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
-				VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
-				VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
-				Rotate(hour_rotation);
-				Line(0,0,0,min_dim/4.0f); /* half-length hour hand */
-				Rotate(min_rotation - hour_rotation);
-				Line(0,0,0,min_dim/2.0f); /* minute hand */
-				Rotate(sec_rotation - min_rotation);
-				Stroke(255,0,0,1);
-				Line(0,-db.h/10.0f,0,min_dim/2.0f); /* second hand, with overhanging tail */
-				//Draw circle in centre
-				Fill(255,0,0,1);
-				Circle(0,0,db.w/150.0f);
-				Rotate(-sec_rotation);
-				//Now draw some dots for seconds...
-#ifdef SECOND_DOTS
-				StrokeWidth(db.w/100.0f);
-				Stroke(0,0,255,1);
-				VGfloat pos = db.h*7.9f/20.0f;
-				for(i = 0; i < 60; i++)
+				//Fade red slowly out over first second
+				if(i == tm_now.tm_sec)
 				{
-					if(i <= tm_now.tm_sec)
+					if(i < 1)
 					{
-						Line(0, pos, 0, pos -10);
+						//Example to fade over 2 seconds...
+						//VGfloat fade = 128.0f * tm_now.tm_sec +  127.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
+						VGfloat fade = 255.0f * ((VGfloat)tval.tv_usec)/200000.0f;
+						if(fade > 255.0f)
+							fade = 255.0f;
+						Stroke(255, fade, fade, 1);
 					}
-					Rotate(-6);
+					else
+						Stroke(255,255,255,1);
 				}
+#endif
+			}
+			Stroke(255,255,255,1);
+			//Again, rotate co-ordinate space so we're just drawing an upright line every time...
+			StrokeWidth(db.w/200.0f);
+			//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
+			VGfloat sec_rotation = -(6.0f * tm_now.tm_sec);
+			VGfloat sec_part = sec_rotation;
+			if(tval.tv_usec > MOVE_HAND_AT)
+				sec_rotation -= ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
+			//Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
+			sec_part -= ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
+			VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
+			VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
+			Rotate(hour_rotation);
+			Line(0,0,0,min_dim/4.0f); /* half-length hour hand */
+			Rotate(min_rotation - hour_rotation);
+			Line(0,0,0,min_dim/2.0f); /* minute hand */
+			Rotate(sec_rotation - min_rotation);
+			Stroke(255,0,0,1);
+			Line(0,-db.h/10.0f,0,min_dim/2.0f); /* second hand, with overhanging tail */
+			//Draw circle in centre
+			Fill(255,0,0,1);
+			Circle(0,0,db.w/150.0f);
+			Rotate(-sec_rotation);
+			//Now draw some dots for seconds...
+#ifdef SECOND_DOTS
+			StrokeWidth(db.w/100.0f);
+			Stroke(0,0,255,1);
+			VGfloat pos = db.h*7.9f/20.0f;
+			for(i = 0; i < 60; i++)
+			{
+				if(i <= tm_now.tm_sec)
+				{
+					Line(0, pos, 0, pos -10);
+				}
+				Rotate(-6);
+			}
 #endif
 
-			}
-			//Translate back to the origin...
-			if(return_x != 0.0 || return_y != 0.0)
-				Translate(-return_x, -return_y);
 		}
-		End();						   			// End the picture
+		//Translate back to the origin...
+		if(return_x != 0.0 || return_y != 0.0)
+			Translate(-return_x, -return_y);
 	}
+	End();	// End the picture
+}
