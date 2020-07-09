@@ -1249,6 +1249,22 @@ void read_settings(const std::string & filename,
 	po::notify(vm);
 }
 
+void cleanup()
+{
+	bRunning = 0;
+	resizeQueue.Abort();
+	finish();					            // Graphics cleanup
+	exit(0);
+}
+
+void KeyCallback(unsigned char key, int x, int y)
+{
+	if(key == 'q')
+	{
+		cleanup();
+	}
+}
+
 
 	int iwidth, iheight;
 	fd_set rfds;
@@ -1308,11 +1324,9 @@ int main(int argc, char *argv[]) {
 	else if(GPI_MODE == 2)
 		create_tcp_threads();
 
-	MainLoop(DrawFrame);
-	bRunning = 0;
-	resizeQueue.Abort();
-	finish();					            // Graphics cleanup
-	exit(0);
+	MainLoop(DrawFrame, KeyCallback);
+	//Shouldn't ever get here, but no harm in cleaning up anyway
+	cleanup();
 }
 void DrawFrame(float interval)
 	{
