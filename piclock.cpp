@@ -48,6 +48,7 @@ std::map<unsigned int,bool> bComms;
 int GPI_MODE = 0;
 std::string TALLY_SERVICE("6254");
 std::string TALLY_SECRET("SharedSecretGoesHere");
+std::string clean_exit_file("/tmp/piclock_clean_exit");
 std::vector<std::string> tally_hosts;
 
 class RegionState;
@@ -1239,6 +1240,7 @@ void read_settings(const std::string & filename,
 		("tally_remote_host", po::value<std::vector<std::string>>(&tally_hosts), "Remote tally host, may be specified multiple times for multiple connections")
 		("tally_remote_port", po::value<std::string>(&TALLY_SERVICE)->default_value("6254"), "Port (or service) to connect to on (default 6254)")
 		("tally_shared_secret", po::value<std::string>(&TALLY_SECRET)->default_value("SharedSecretGoesHere"), "Shared Secret (password) for connecting to tally service")
+		("clean_exit_file", po::value<std::string>(&clean_exit_file)->default_value("/tmp/piclock_clean_exit"), "Flag file created to indicate a clean exit (from keyboard request)")
 	;
 	
 	std::ifstream settings_file(filename.c_str());
@@ -1254,6 +1256,10 @@ void cleanup()
 	bRunning = 0;
 	resizeQueue.Abort();
 	finish();					            // Graphics cleanup
+
+	//If there's a clean exit trigger file, create it
+	if(!clean_exit_file.empty())
+		open(clean_exit_file.c_str(), O_CREAT, 00666);
 	exit(0);
 }
 
@@ -1270,7 +1276,6 @@ void KeyCallback(unsigned char key, int x, int y)
    to make global now that drawing is done via a callback
  */
 static int iwidth, iheight;
-static po::variables_map vm;
 static struct timeval tval;
 static ntpstate_t ntp_state_data;
 static VGfloat offset;
@@ -1278,6 +1283,7 @@ static int vrate;
 static int hrate;
 
 int main(int argc, char *argv[]) {
+	po::variables_map vm;
 
 	std::string configFile = "piclock.cfg";
 
