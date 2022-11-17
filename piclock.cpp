@@ -144,8 +144,17 @@ void Text(NVGcontext *vg, float x, float y, const char* s, const Fontinfo &f, in
 {
 	nvgFontFace(vg, f.c_str());
 	nvgFontSize(vg, pointsize);
-	nvgTextAlign(vg, NVG_ALIGN_LEFT|NVG_ALIGN_MIDDLE);
+	nvgTextAlign(vg, NVG_ALIGN_LEFT|NVG_ALIGN_BOTTOM);
 	nvgText(vg, x, y, s, NULL);
+}
+
+void drawimage(NVGcontext *vg, float x, float y, float w, float h, int img_handle)
+{
+	NVGpaint imgPaint = nvgImagePattern(vg, x, y, w, h,0,img_handle,1.0f);
+	nvgBeginPath(vg);
+	nvgRect(vg, x, y, w, h);
+	nvgFillPaint(vg, imgPaint);
+	nvgFill(vg);
 }
 
 void TextClip(NVGcontext *vg, float x, float y, const char* s, const Fontinfo &f, int pointsize, float clipwidth, int clip_codepoint, int clip_count)
@@ -214,11 +223,11 @@ public:
 	{
 		static Magick::Color black = Magick::Color(0,0,0,0);
 		Magick::Image scaled(*pSource);
+		scaled.flip();
 		if(bQuick)
 			scaled.filterType(Magick::PointFilter);
 		scaled.resize(Geom);
 		scaled.extent(Geom, black, Magick::CenterGravity);
-		//Note the std::map will create a new object, before we get a pointer to it
 		pOutput = std::make_shared<Magick::Blob>();
 		scaled.write(pOutput.get(), "RGBA", 8);
 	}
@@ -291,30 +300,49 @@ public:
 	{
 		return (bool)pSource;
 	}
-	const void *GetImage(int w, int h, const std::string & name)
+	const int GetImage(NVGcontext* vg, int w, int h, const std::string & name)
 	{
+		savedVg = vg;
 		if(!IsValid())
-			return NULL;
+			return 0;
 		Magick::Geometry geom(w, h);
 		const auto & iter = Scaled.find(geom);
 		if(iter != Scaled.end())
 		{
-			if(iter->second)
-				return iter->second->data();
+			if(iter->second.blob)
+			{
+				if(iter->second.handle == 0)
+					iter->second.handle = nvgCreateImageRGBA(vg, w, h, 0, (const unsigned char *)iter->second.blob->data());
+				return iter->second.handle;
+			}
 		}
 		else
 		{
 			std::shared_ptr<ResizedImage> pResize = std::make_shared<ResizedImage>(geom, pSource, name, true);
+			Scaled[geom] = ScaledData();
 			resizeQueue.Add(pResize);
-			Scaled[geom] = std::shared_ptr<Magick::Blob>();
 		}
-		return NULL;
+		return 0;
 	}
 	void UpdateFromResize(std::shared_ptr<ResizedImage> pResize)
 	{
 		//Refuse to do this if our image has changed since then...
 		if(pResize && pResize->pOutput && pResize->pSource == pSource)
-			Scaled[pResize->Geom] = pResize->pOutput;
+		{
+			const auto & geom = pResize->Geom;
+			const auto & iter = Scaled.find(geom);
+			if(iter == Scaled.end())
+			{
+				//Impossible happened, data is created before job is scheduled
+				return;
+			}
+			if(savedVg != NULL && iter->second.handle != 0)
+			{
+				nvgDeleteImage(savedVg, iter->second.handle);
+			}
+			iter->second.handle = 0;
+			iter->second.blob = pResize->pOutput;
+		}
 	}
 	bool IsSameSource(std::shared_ptr<Magick::Blob> pOtherBlob)
 	{
@@ -322,10 +350,28 @@ public:
 			&& (pOtherBlob->length() == pSourceBlob->length())
 			&& (memcmp(pOtherBlob->data(), pSourceBlob->data(), pSourceBlob->length()) == 0);
 	}
+	~ScalingImage()
+	{
+		if(savedVg == NULL)
+			return;
+		for(const auto &item : Scaled)
+		{
+			nvgDeleteImage(savedVg, item.second.handle);
+		}
+	}
 private:
+	class ScaledData
+	{
+		public:
+			ScaledData() : handle(0)
+			{}
+			std::shared_ptr<Magick::Blob> blob;
+			int handle;
+	};
+	NVGcontext *savedVg = NULL;
 	std::shared_ptr<Magick::Image> pSource;
 	std::shared_ptr<Magick::Blob> pSourceBlob;
-	std::map<Magick::Geometry, std::shared_ptr<Magick::Blob> > Scaled;
+	std::map<Magick::Geometry, ScaledData> Scaled;
 };
 
 
@@ -579,13 +625,17 @@ public:
 		:x(_x),y(_y),w(_w),h(_h),m_corner(0)
 	{
 	}
-	VGfloat mid_x()
+	VGfloat top_y() const
+	{
+		return y - h;
+	}
+	VGfloat mid_x() const
 	{
 		return x + w/2.0f;
 	}
-	VGfloat mid_y()
+	VGfloat mid_y() const
 	{
-		return y + h/2.0f;
+		return y - h/2.0f;
 	}
 	void TextMid(NVGcontext * vg, const std::shared_ptr<std::string> &str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>())
 	{
@@ -603,12 +653,12 @@ public:
 			if(labelSize <= 0)
 				labelSize = pointSize/3;
 			labelHeight = TextHeight(vg, FONT_PROP, labelSize);
-			auto label_y = y + h - labelHeight;
+			auto label_y = y - h + labelHeight;
 			::TextClip(vg, x + m_corner, label_y,
 				label->c_str(), FONT_PROP, labelSize, w - m_corner, '.',3);
 		}
 		auto text_height = TextHeight(vg, font, pointSize);
-		VGfloat text_y = mid_y() - text_height *.33f - labelHeight*0.5f;
+		VGfloat text_y = mid_y() + text_height *.1f + labelHeight*0.5f;
 				
 		::TextMid(vg, mid_x(), text_y, str.c_str(), font, pointSize);
 	}
@@ -616,22 +666,22 @@ public:
 	{
 		if(label)
 		{
-			auto label_y = y + h - TextHeight(vg, FONT_PROP, pointSize/3);
+			auto label_y = y - h + TextHeight(vg, FONT_PROP, pointSize/3);
 			::Text(vg, x + w*.05f, label_y,
 				label->c_str(), FONT_PROP, pointSize/3);
 		}
 				
-		::TextMid(vg, mid_x(), y + h *.05f, str.c_str(), font, pointSize);
+		::TextMidBottom(vg, mid_x(), y - h *.05f, str.c_str(), font, pointSize);
 	}
 	void Roundrect(NVGcontext *vg, VGfloat corner)
 	{
 		m_corner = corner;
-		::Roundrect(vg, x, y, w, h, corner);
+		::Roundrect(vg, x, top_y(), w, h, corner);
 	}
 	void Rect(NVGcontext * vg)
 	{
 		m_corner = 0;
-		::Rect(vg, x,y,w,h);
+		::Rect(vg, x, top_y(), w, h);
 	}
 	void Zero()
 	{
@@ -763,7 +813,7 @@ public:
 				if(bBoxLandscape)
 					textWidth -= dim;
 				//Always in the top right corner
-				m_boxAnalogue = DisplayBox(width - dim, height - dim, dim, dim);
+				m_boxAnalogue = DisplayBox(width - dim, dim, dim, dim);
 				m_hours_x = std::make_shared<std::map<int, VGfloat> >();
 				m_hours_y = std::make_shared<std::map<int, VGfloat> >();
 				int i;
@@ -772,9 +822,9 @@ public:
 					factor = 7.0f/20.0f;
 				for(i = 0; i < 12; i++)
 				{
-					(*m_hours_x)[i] = cosf(M_PI*i/6.0f) * dim*factor;
-					(*m_hours_x)[i] -= dim/30.0f;
-					(*m_hours_y)[i] = sinf(M_PI*i/6.0f) * dim*factor;
+					(*m_hours_y)[i] = -cosf(M_PI*i/6.0f) * dim*factor;
+					//(*m_hours_y)[i] -= dim/30.0f;
+					(*m_hours_x)[i] = sinf(M_PI*i/6.0f) * dim*factor;
 				}
 			}
 			else
@@ -783,12 +833,12 @@ public:
 				m_hours_x.reset();
 				m_hours_y.reset();
 			}
-
-			m_boxStatus = DisplayBox(0,0, textWidth, statusTextHeight*3.2f);
-			VGfloat textTop = height;
-#define textHeight (textTop - m_boxStatus.h)
+			float statusHeight = statusTextHeight*3.2f;
+			m_boxStatus = DisplayBox(0, height, textWidth, statusHeight);
+			VGfloat textTop = 0;
+#define textHeight (height - textTop - m_boxStatus.h)
 			if(!bBoxLandscape)
-				textTop -= m_boxAnalogue.h;
+				textTop += m_boxAnalogue.h;
 			VGfloat digitalColWidth = textWidth;
 			VGfloat digitalHeight = 0;
 			if(m_bDigitalClockUTC || m_bDigitalClockLocal)
@@ -801,12 +851,12 @@ public:
 					clockStr = "TOD " + clockStr;
 				m_digitalPointSize = MaxPointSize(vg, digitalColWidth*.95f, textHeight, clockStr, FONT_MONO);
 				digitalHeight = TextHeight(vg, FONT_MONO, m_digitalPointSize)*1.1f;
-				DisplayBox topDigital(0, textTop - digitalHeight, digitalColWidth, digitalHeight);
-				textTop -= digitalHeight;
+				DisplayBox topDigital(0, textTop + digitalHeight, digitalColWidth, digitalHeight);
+				textTop += digitalHeight;
 				if(m_bDigitalClockUTC && m_bDigitalClockLocal)
 				{
-					DisplayBox bottomDigital(0, textTop - digitalHeight, digitalColWidth, digitalHeight);
-					textTop -= digitalHeight;
+					DisplayBox bottomDigital(0, textTop + digitalHeight, digitalColWidth, digitalHeight);
+					textTop += digitalHeight;
 					//Try to make digital clock below analogue clock the same
 					if(m_bAnalogueClockLocal)
 					{
@@ -833,7 +883,7 @@ public:
 				auto dateStr = FormatDate(m_bDateLocal? local:utc);
 				m_datePointSize = MaxPointSize(vg, digitalColWidth*.9f, textHeight, dateStr, FONT_PROP);
 				auto dateHeight = TextHeight(vg, FONT_PROP, m_datePointSize);
-				m_boxDate = DisplayBox(0, textTop - dateHeight *1.1, digitalColWidth, dateHeight*1.2);
+				m_boxDate = DisplayBox(0, textTop + dateHeight *1.1, digitalColWidth, dateHeight*1.2);
 
 			}
 			else
@@ -841,8 +891,8 @@ public:
 				m_datePointSize = 0;
 				m_boxDate.Zero();
 			}
-			textTop -= m_boxDate.h;
-			m_boxTallies = DisplayBox(0,textTop - textHeight, textWidth, textHeight);
+			textTop += m_boxDate.h;
+			m_boxTallies = DisplayBox(0,textTop + textHeight, textWidth, textHeight);
 			m_bRecalcReqd = false;
 			lastDayOfMonth = day;
 			return true;
@@ -999,7 +1049,12 @@ public:
 
 	VGfloat y() const
 	{
-		return m_y;
+		return 1.f - m_y;
+	}
+
+	VGfloat top_y() const
+	{
+		return y() - height();
 	}
 
 	bool hasDigitalUTC() const
@@ -1152,7 +1207,7 @@ bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 		}
 		std::shared_ptr<RegionState> pRS = regions[regionIndex];
 
-		if(bMaxRegion && (pRS->x() != 0.0f || pRS->y() != 0.0f || pRS->width() != 1.0f || pRS->height() != 1.0f))
+		if(bMaxRegion && (pRS->x() != 0.0f || pRS->y() != 1.0f || pRS->width() != 1.0f || pRS->height() != 1.0f))
 		{
 			bSizeChanged = true;
 			pRS->UpdateFromMessage(std::make_shared<ClockMsg_SetLocation>(std::make_shared<int>(regionIndex), "SETLOCATION:0:0:1:1"));
@@ -1360,8 +1415,6 @@ void cleanup()
 {
 	bRunning = 0;
 	resizeQueue.Abort();
-#warning implement finish()
-	//finish();					            // Graphics cleanup
 
 	//If there's a clean exit trigger file, create it
 	if(!clean_exit_file.empty())
@@ -1562,8 +1615,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		std::shared_ptr<RegionState> pRS = region.second;
 
 		VGfloat return_x = display_width *pRS->x();
-#warning 1-y?
-		VGfloat return_y = display_height *pRS->y();
+		VGfloat return_y = display_height *(pRS->top_y());
 		nvgSave(vg);//Save current translation to stack to be restored later
 		nvgTranslate(vg, return_x, return_y);
 
@@ -1643,11 +1695,11 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 						     TextWidth(vg, header_text, FONT_PROP, pointSize))*1.1f;
 			auto statusTextHeight = TextHeight(vg, FONT_PROP, pointSize);
 			//Draw a box around NTP status
-			Rect(vg, db.x + db.w - statusBoxLen, db.y, statusBoxLen, db.h);
+			Rect(vg, db.x + db.w - statusBoxLen, db.top_y() , statusBoxLen, db.h);
 			nvgFillColor(vg, colNtpText);
 			//2 bits of text
-			TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight *.5f, sync_text, FONT_PROP, pointSize);
-			TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y + statusTextHeight*1.8f, header_text, FONT_PROP, pointSize);
+			TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight *.8f, sync_text, FONT_PROP, pointSize);
+			TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight*2.f, header_text, FONT_PROP, pointSize);
 
 			db.w -= statusBoxLen;
 
@@ -1679,16 +1731,15 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 					else
 						nvgFillColor(vg,colCommsFail);
 					VGfloat base_x = db.x + db.w - commsWidth * (VGfloat)(tally_hosts.size()-window);
-					VGfloat base_y = db.y;
-					Rect(vg, base_x, base_y, commsWidth, db.h);
+					Rect(vg, base_x, db.top_y(), commsWidth, db.h);
 					nvgFillColor(vg,colNtpText);
 					char buf[512];
 					buf[511] = '\0';
 					base_x += commsWidth*.5f;
 					snprintf(buf, 511, "Tally Server %d", window + 1);
-					TextMid(vg, base_x, base_y + commsTextHeight*1.8f, buf, FONT_PROP, pointSize);
+					TextMid(vg, base_x, db.y - commsTextHeight*2.0f, buf, FONT_PROP, pointSize);
 					snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
-					TextMid(vg, base_x, base_y + commsTextHeight*0.4f, buf, FONT_PROP, pointSize);
+					TextMid(vg, base_x, db.y - commsTextHeight*0.8f, buf, FONT_PROP, pointSize);
 				}
 				if(bAnyComms)
 				{
@@ -1716,7 +1767,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 				//float y_offset = height/10.0f;
 				for(int row = 0; row < pRS->TD.nRows; row++)
 				{
-					VGfloat base_y = ((VGfloat)row)*row_height + db.y;
+					VGfloat base_y = db.y - ((VGfloat)row)*row_height;
 					int col_count = pRS->TD.nCols[row];
 					VGfloat col_width = col_width_default;
 					if(col_count <= 0)
@@ -1731,21 +1782,19 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 						DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
 						auto text = curTally->Text(tval);
 						auto iter = images.end();
-						const void * img_data = NULL;
+						int img_handle = 0;
 #warning images
-#if 0
 						if(text && (iter = images.find(*text)) != images.end() && iter->second.IsValid())
 						{
 							int w = (int)dbTally.w;
 							int h = (int)dbTally.h;
-							img_data = (const VGubyte*)iter->second.GetImage(w, h, *text);
-							if(img_data != NULL)
-								makeimage(dbTally.x, dbTally.y, w, h, img_data);
+							img_handle = iter->second.GetImage(vg, w, h, *text);
+							if(img_handle != 0)
+								drawimage(vg, dbTally.x, dbTally.top_y(), w, h, img_handle);
 							else
 								text = std::shared_ptr<std::string>();
 						}
-#endif
-						if(img_data == NULL)
+						if(img_handle == 0)
 						{
 							curTally->BG(tval)->Fill(vg);
 							dbTally.Roundrect(vg, row_height/10.0f);
@@ -1779,19 +1828,23 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			//Right, now start drawing the clock
 
 			//Move to the centre of the clock
-			VGfloat move_x = db.x + db.w/2.0f;
-			VGfloat move_y = db.y + db.h/2.0f;
+			VGfloat move_x = db.mid_x();
+			VGfloat move_y = db.mid_y();
 			
 			nvgTranslate(vg, move_x, move_y);
 
 			if(numbers)
+			{
 				//Write out hour labels around edge of clock
 				for(i = 0; i < 12; i++)
 				{
 					char buf[5];
 					sprintf(buf, "%d", i? i:12);
-					TextMid(vg, hours_y->at(i),hours_x->at(i), buf, FONT_HOURS, db.h/15.0f);
+					TextMid(vg, hours_x->at(i),hours_y->at(i), buf, FONT_HOURS, db.h/15.0f);
 				}
+			}
+			//Spin clock around 180 degrees because this code originally worked with Y co-ordinates increasing as you went up
+			Rotate(vg, 180.0f);
 			//Go around drawing dashes around edge of clock
 			nvgStrokeWidth(vg, db.w/100.0f);
 			VGfloat start, end_short, end_long;
@@ -1819,7 +1872,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 					Line(vg, 0, start, 0, end_long);
 				else
 					Line(vg, 0, start, 0, end_short);
-				Rotate(vg, -6);
+				Rotate(vg, 6);
 #ifndef NO_COLOUR_CHANGE
 				//Fade red slowly out over first second
 				if(i == tm_now.tm_sec)
@@ -1842,14 +1895,14 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			//Again, rotate co-ordinate space so we're just drawing an upright line every time...
 			nvgStrokeWidth(vg, db.w/200.0f);
 			//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
-			VGfloat sec_rotation = -(6.0f * tm_now.tm_sec);
+			VGfloat sec_rotation = (6.0f * tm_now.tm_sec);
 			VGfloat sec_part = sec_rotation;
 			if(tval.tv_usec > MOVE_HAND_AT)
-				sec_rotation -= ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
+				sec_rotation += ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
 			//Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
-			sec_part -= ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
-			VGfloat min_rotation = -6.0f *tm_now.tm_min + sec_part/60.0f;
-			VGfloat hour_rotation = -30.0f *tm_now.tm_hour + min_rotation/12.0f;
+			sec_part += ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
+			VGfloat min_rotation = 6.0f *tm_now.tm_min + sec_part/60.0f;
+			VGfloat hour_rotation = 30.0f *tm_now.tm_hour + min_rotation/12.0f;
 			Rotate(vg, hour_rotation);
 			Line(vg, 0,0,0,min_dim/4.0f); /* half-length hour hand */
 			Rotate(vg, min_rotation - hour_rotation);
@@ -1862,7 +1915,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			nvgBeginPath(vg);
 			nvgCircle(vg, 0,0,db.w/150.0f);
 			nvgFill(vg);
-			Rotate(vg, -sec_rotation);
+			Rotate(vg, -sec_rotation -180.0f);
 			//Now draw some dots for seconds...
 #ifdef SECOND_DOTS
 			nvgStrokeWidth(vg, db.w/100.0f);
