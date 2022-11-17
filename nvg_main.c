@@ -17,12 +17,12 @@
 //
 
 #include <stdio.h>
-#define GLFW_INCLUDE_ES3
+#define GLFW_INCLUDE_ES2
 #define GLFW_INCLUDE_GLEXT
 #include <GLFW/glfw3.h>
 #include <GL/gl.h>
 #include "nanovg.h"
-#define NANOVG_GLES3_IMPLEMENTATION
+#define NANOVG_GLES2_IMPLEMENTATION
 #include "nanovg_gl.h"
 #include "nanovg_gl_utils.h"
 //#include "perf.h"
@@ -69,7 +69,7 @@ int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
 	glfwSetErrorCallback(errorcb);
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_ES_API);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
 	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
@@ -86,7 +86,7 @@ int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
 
 	glfwMakeContextCurrent(window);
 
-	vg = nvgCreateGLES3(NVG_ANTIALIAS | NVG_STENCIL_STROKES | NVG_DEBUG);
+	vg = nvgCreateGLES2(NVG_ANTIALIAS | NVG_STENCIL_STROKES | NVG_DEBUG);
 	if (vg == NULL) {
 		printf("Could not init nanovg.\n");
 		return -1;
@@ -141,7 +141,7 @@ int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
 		glfwPollEvents();
 	}
 
-	nvgDeleteGLES3(vg);
+	nvgDeleteGLES2(vg);
 
 	glfwTerminate();
 	return 0;
