@@ -3,6 +3,8 @@
 
 #include <b64/decode.h>
 
+typedef float VGfloat;
+
 std::shared_ptr<std::string> get_arg_p(const std::string & input, int index, bool bTerminated = true)
 {
 	size_t start_index = 0;
@@ -96,15 +98,15 @@ public:
 		return col & 0xFF;
 	}
 	TallyColour(const std::string &input)
-		:col(std::stoul(input, NULL, 16))
+		:TallyColour(std::stoul(input, NULL, 16))
 	{
 	}
 	TallyColour(uint8_t r, uint8_t g, uint8_t b)
-		:col( (r<<16) | (g<<8) | b )
+		:TallyColour( (r<<16) | (g<<8) | b )
 	{
 	}
 	TallyColour()
-		:col(0) //Default to black
+		:TallyColour(0) //Default to black
 	{
 	}
 	bool Equals(const TallyColour & other) const
@@ -112,17 +114,23 @@ public:
 		return other.col == col;
 	}
 
-	void Fill()
+	void Fill(NVGcontext *vg)
 	{
-		::Fill(R(),G(),B(),1);
+		nvgFillColor(vg,nvgCol);
 	}
 
-	void Stroke()
+	void Stroke(NVGcontext *vg)
 	{
-		::Stroke(R(),G(),B(),1);
+		nvgStrokeColor(vg,nvgCol);
 	}
 
 protected:
+	TallyColour(const uint32_t data)
+		:col(data)
+	{
+		nvgCol = nvgRGB(R(),G(),B());
+	}
+	NVGcolor nvgCol;
 	uint32_t col;
 };
 
