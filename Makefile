@@ -25,4 +25,4 @@ libpifacedigital/libpifacedigital.a:
 	$(MAKE) -C libpifacedigital
 
 clean:
-	rm -f piclockNVG piclock.o ntpstat.o nvg_main.o
+	rm -f piclockNVG piclockOVG piclockOGL piclock.o ntpstat.o nvg_main.o

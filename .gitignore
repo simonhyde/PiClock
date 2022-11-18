@@ -1,4 +1,4 @@
 ntpstat.o
-piclockOGL
-piclockOVG
+piclockNVG
 piclock.o
+nvg_main.o
