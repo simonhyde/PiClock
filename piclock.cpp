@@ -1560,9 +1560,11 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 	static NVGcolor colWhite = nvgRGBf(1.0f,1.0f,1.0f);
 	static NVGcolor colMidGray = nvgRGBf(0.5f,0.5f,0.5f);
-	static NVGcolor colBlack = nvgRGBf(0.0f,0.0f,0.0f);
+	//Unused at the moment, uncomment to re-enable
+	//static NVGcolor colBlack = nvgRGBf(0.0f,0.0f,0.0f);
 	static NVGcolor colRed = nvgRGBf(1.0f,0.0f,0.0f);
-	static NVGcolor colBlue = nvgRGBf(0.0f,0.0f,1.0f);
+	//Unused, at the moment, uncomment to re-enable
+	//static NVGcolor colBlue = nvgRGBf(0.0f,0.0f,1.0f);
         static NVGcolor colNtpSynced = nvgRGB(0,100,0);
         static NVGcolor colNtpNotSync[2] = {nvgRGB(120,0,120),nvgRGB(120,0,0)};
 	static NVGcolor colNtpText = nvgRGB(200,200,200);

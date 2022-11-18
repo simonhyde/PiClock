@@ -1,7 +1,7 @@
 all: piclockNVG
 
 piclock.o:	piclock.cpp blocking_tcp_client.cpp  piclock_messages.h
-	gcc -O4 -Wall -Inanovg/src `pkg-config Magick++ --cflags` -Ilibmcp23s17/src -Ilibpifacedigital/src -c -o piclock.o piclock.cpp
+	gcc -O4 -Wall -Inanovg/src `pkg-config Magick++ --cflags` -Ilibmcp23s17/src -Ilibpifacedigital/src -Wno-psabi -c -o piclock.o piclock.cpp
 
 nvg_main.o:	nvg_main.c
 	gcc -O4 -Wall -I../nanovg/src -c -o nvg_main.o nvg_main.c
