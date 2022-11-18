@@ -111,7 +111,8 @@ VGfloat TextHeight(NVGcontext *vg, const Fontinfo &f, int pointsize)
 		float bounds[4] = {0,0,0,0};
 		nvgTextAlign(vg, NVG_ALIGN_LEFT|NVG_ALIGN_TOP);
 		nvgFontFace(vg, f.c_str());
-		nvgFontSize(vg, 1);
+		//nvgTextBounds seems to round to the nearest whole number, so go for a really big font size for our cache, powers of 2 are easier to divide down accurately
+		nvgFontSize(vg, 1024);
 		nvgTextBounds(vg, 0,0, (char *)allChars, NULL, bounds);
 		retBase = fontHeights[f] = bounds[3];
 	}
@@ -119,7 +120,7 @@ VGfloat TextHeight(NVGcontext *vg, const Fontinfo &f, int pointsize)
 	{
 		retBase = iter->second;
 	}
-	return retBase * (float)pointsize;
+	return (retBase * (float)pointsize)/1024.f;
 }
 
 VGfloat TextWidth(NVGcontext *vg, const char * str, const Fontinfo &f, int pointsize)
@@ -157,10 +158,69 @@ void drawimage(NVGcontext *vg, float x, float y, float w, float h, int img_handl
 	nvgFill(vg);
 }
 
-void TextClip(NVGcontext *vg, float x, float y, const char* s, const Fontinfo &f, int pointsize, float clipwidth, int clip_codepoint, int clip_count)
+
+
+std::shared_ptr<std::map<std::pair<std::string, float>, std::string> > clippedTextCache;
+std::shared_ptr<std::map<std::pair<std::string, float>, std::string> > prevClippedTextCache;
+
+void TextClip(NVGcontext *vg, float x, float y, const std::string &s, const Fontinfo &f, int pointsize, float clipwidth, const std::string &clip_str)
 {
-#warning Implement TextClip
-	Text(vg,x,y,s,f,pointsize);
+	std::string output_str = s;
+	bool bThisCache = true;
+	const auto cacheKey = std::pair<std::string, float>(f + "_FONT_" + s, clipwidth/(float) pointsize);
+	auto iter = clippedTextCache->find(cacheKey);
+	if(iter == clippedTextCache->end())
+	{
+		bThisCache = false;
+		iter = prevClippedTextCache->find(cacheKey);
+	}
+	if(iter == prevClippedTextCache->end())
+	{
+		//nvgTextBounds seems to round to the nearest whole number, so go for a really big font size for our calculations, powers of 2 are easier to divide/multiply accurately
+		float calcWidth = 1024.f*clipwidth / (float)pointsize; //Genericise for all point sizes
+		//Do the work...
+		float baseWidth = TextWidth(vg, s.c_str(), f, 1024);
+		if(baseWidth > calcWidth)
+		{
+			std::string final_clip_str = clip_str;
+			if(final_clip_str.length() > 0)
+			{
+				float clipLen = TextWidth(vg, final_clip_str.c_str(), f, 1024);
+				if(clipLen >= calcWidth)
+					final_clip_str = std::string();
+				else
+					calcWidth -= clipLen;
+			}
+			float string_percentage = calcWidth / baseWidth;
+			std::string::size_type newLen = (unsigned)(((float)s.length())*string_percentage);
+			float curWidth;
+			//First find longest string which is too long from this point
+			do
+			{
+				output_str = s.substr(0,newLen);
+				curWidth = TextWidth(vg, output_str.c_str(), f, 1024);
+			}
+			while(curWidth < calcWidth && (++newLen <= s.length()));
+			//Then work down to first string that is short enough from this point
+			do
+			{
+				output_str = s.substr(0,newLen);
+				curWidth = TextWidth(vg, output_str.c_str(), f, 1024);
+			}
+			while(curWidth > calcWidth && (--newLen > 0));
+			output_str += final_clip_str;
+		}
+	}
+	else
+	{
+		output_str = iter->second;
+	}
+	//Item has been used, from prev cache or generated, so re-cache for next pass
+	if(!bThisCache)
+	{
+		(*clippedTextCache)[cacheKey] = output_str;
+	}
+	Text(vg,x,y,output_str.c_str(),f,pointsize);
 }
 
 void TextMidBottom(NVGcontext *vg, float x, float y, const char* s, const Fontinfo &f, int pointsize)
@@ -655,7 +715,7 @@ public:
 			labelHeight = TextHeight(vg, FONT_PROP, labelSize);
 			auto label_y = y - h + labelHeight;
 			::TextClip(vg, x + m_corner, label_y,
-				label->c_str(), FONT_PROP, labelSize, w - m_corner, '.',3);
+				*label, FONT_PROP, labelSize, w - m_corner, "...");
 		}
 		auto text_height = TextHeight(vg, font, pointSize);
 		VGfloat text_y = mid_y() + text_height *.1f + labelHeight*0.5f;
@@ -1509,6 +1569,16 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	static NVGcolor colCommsOk = nvgRGB(0,100,0);
 	static NVGcolor colCommsFail = nvgRGB(190,0,0);
 
+	if(clippedTextCache)
+	{
+		prevClippedTextCache = clippedTextCache;
+	}
+	else
+	{
+		prevClippedTextCache = std::make_shared<std::map<std::pair<std::string, float>, std::string> >();
+	}
+
+	clippedTextCache = std::make_shared<std::map<std::pair<std::string, float>, std::string> >();
 
 	if(regions.empty())
 		//Add 1 region, for when we have no TCP connection, should probably only happen on first pass
@@ -1783,7 +1853,6 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 						auto text = curTally->Text(tval);
 						auto iter = images.end();
 						int img_handle = 0;
-#warning images
 						if(text && (iter = images.find(*text)) != images.end() && iter->second.IsValid())
 						{
 							int w = (int)dbTally.w;
