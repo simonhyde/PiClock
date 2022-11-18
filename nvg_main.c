@@ -34,22 +34,13 @@ void errorcb(int error, const char* desc)
 	printf("GLFW error %d: %s\n", error, desc);
 }
 
-int blowup = 0;
-int screenshot = 0;
-int premult = 0;
 
 static void key(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
 	NVG_NOTUSED(scancode);
 	NVG_NOTUSED(mods);
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
+	if ((key == GLFW_KEY_ESCAPE || key == GLFW_KEY_Q) && action == GLFW_PRESS)
 		glfwSetWindowShouldClose(window, GL_TRUE);
-	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
-		blowup = !blowup;
-	if (key == GLFW_KEY_S && action == GLFW_PRESS)
-		screenshot = 1;
-	if (key == GLFW_KEY_P && action == GLFW_PRESS)
-		premult = !premult;
 }
 
 int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
@@ -57,7 +48,6 @@ int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
 	GLFWwindow* window;
 	NVGcontext* vg = NULL;
 	//PerfGraph fps;
-	double prevt = 0;
 
 	if (!glfwInit()) {
 		printf("Failed to init GLFW.");
@@ -95,7 +85,6 @@ int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
 	glfwSwapInterval(0);
 
 	glfwSetTime(0);
-	prevt = glfwGetTime();
 
 	nvgCreateFont(vg, "SerifTypeface","/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
 	nvgCreateFont(vg, "SansTypeface","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
@@ -103,15 +92,10 @@ int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
 
 	while (!glfwWindowShouldClose(window))
 	{
-		double mx, my, t, dt;
+		double mx, my;
 		int winWidth, winHeight;
 		int fbWidth, fbHeight;
 		float pxRatio;
-
-		t = glfwGetTime();
-		dt = t - prevt;
-		prevt = t;
-		//updateGraph(&fps, dt);
 
 		glfwGetCursorPos(window, &mx, &my);
 		glfwGetWindowSize(window, &winWidth, &winHeight);
