@@ -43,7 +43,7 @@ static void key(GLFWwindow* window, int key, int scancode, int action, int mods)
 		glfwSetWindowShouldClose(window, GL_TRUE);
 }
 
-int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
+int nvg_main(void (*drawFrame)(NVGcontext*,int,int), int init_window_width, int init_window_height)
 {
 	GLFWwindow* window;
 	NVGcontext* vg = NULL;
@@ -62,11 +62,16 @@ int nvg_example_main(void (*drawFrame)(NVGcontext*,int,int))
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
 
-	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-	const GLFWvidmode* vidMode = glfwGetVideoMode(monitor);
-//	window = glfwCreateWindow(1000, 600, "NanoVG", NULL, NULL);
-	//window = glfwCreateWindow(1920, 1080, "NanoVG", glfwGetPrimaryMonitor(), NULL);
-	window = glfwCreateWindow(vidMode->width, vidMode->height, "NanoVG", monitor, NULL);
+        if(init_window_width == 0 || init_window_height == 0)
+        {
+            GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+            const GLFWvidmode* vidMode = glfwGetVideoMode(monitor);
+            window = glfwCreateWindow(vidMode->width, vidMode->height, "PiClock", monitor, NULL);
+        }
+        else
+        {
+            window = glfwCreateWindow(init_window_width, init_window_height, "PiClock", NULL, NULL);
+        }
 	if (!window) {
 		glfwTerminate();
 		return -1;

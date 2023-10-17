@@ -44,6 +44,8 @@ std::string mac_address;
 int bRunning = 1;
 std::map<unsigned int,bool> bComms;
 int GPI_MODE = 0;
+int init_window_width = 0;
+int init_window_height = 0;
 std::string TALLY_SERVICE("6254");
 std::string TALLY_SECRET("SharedSecretGoesHere");
 std::string clean_exit_file("/tmp/piclock_clean_exit");
@@ -1456,6 +1458,8 @@ void read_settings(const std::string & filename,
 {
 	po::options_description desc("Options");
 	desc.add_options()
+                ("init_window_width", po::value<int>(&init_window_width)->default_value(0), "Initial window width, specifying 0 gives fullscreen mode")
+                ("init_window_height", po::value<int>(&init_window_height)->default_value(0), "Initial window height, specifying 0 gives fullscreen mode")
 		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=PiFace Digital, 2=TCP/IP")
 		("tally_remote_host", po::value<std::vector<std::string>>(&tally_hosts), "Remote tally host, may be specified multiple times for multiple connections")
 		("tally_remote_port", po::value<std::string>(&TALLY_SERVICE)->default_value("6254"), "Port (or service) to connect to on (default 6254)")
@@ -1530,7 +1534,7 @@ int main(int argc, char *argv[]) {
 	else if(GPI_MODE == 2)
 		create_tcp_threads();
 
-	nvg_example_main(DrawFrame);
+	nvg_main(DrawFrame, init_window_width, init_window_height);
 
 	//Shouldn't ever get here, but no harm in cleaning up anyway
 	cleanup();

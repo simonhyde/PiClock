@@ -3,7 +3,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-int nvg_example_main(void(*drawFunc)(NVGcontext*,int,int));
+int nvg_main(void(*drawFunc)(NVGcontext*,int,int), int, int);
 #ifdef __cplusplus
 }
 #endif
