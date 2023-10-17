@@ -1,7 +1,9 @@
 PiClock
 =======
 
-Simple Clock for the Raspberry Pi, using OpenVG for its output
+Simple studio clock for linux. This was originally built using OpenVG on
+Raspberry Pi for its output, but now uses plain OpenGL and works fine on
+normal XOrg on Debian.
 
 Checkout
 --------
@@ -21,7 +23,7 @@ Build
 1. First you'll need to install some dependencies (ntpdate is only suggested for runtime):
 
 ```shell
-	sudo apt-get install libjpeg-dev ttf-dejavu libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev freeglut3-dev libglew-dev cmake x11-xserver-utils xinit ntp ntpdate
+	sudo apt-get install libjpeg-dev libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev freeglut3-dev libglew-dev cmake x11-xserver-utils xinit ntp ntpdate libglfw3-dev premake4
 ```
 
 2. Change to the directory you checked the code out into; probably:
@@ -41,20 +43,6 @@ Build
 ```shell
 	./piclock
 ```
-
-
-Failed to add service
----------------------
-If you get this error when launching PiClock:
-```
-	* failed to add service - already in use?
-```
-
-Then you're probably using a Raspberry Pi 4, and you've launched the old OVG
-version directly.
-
-The version which uses the Pi's OpenVG support directly isn't supported on
-the Raspberry Pi 4, but the clock should work with an OpenGL shim in the way.
 
 
 Configure NTP
