@@ -1,4 +1,5 @@
 #include "regionstate.h"
+#include "overallstate.h"
 
 
 RegionState::RegionState()
@@ -324,3 +325,61 @@ std::string RegionState::FormatTime(const struct tm &data, time_t usecs)
 #endif
     return buf;
 }
+
+void RegionState::DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval)
+{
+	auto curTally = TD.displays[row][col];
+	if(!curTally)
+			return;
+	auto text = curTally->Text(tval);
+	auto iter = global.Images.end();
+	int img_handle = 0;
+	if(text && (iter = global.Images.find(*text)) != global.Images.end() && iter->second.IsValid())
+	{
+		int w = (int)dbTally.w;
+		int h = (int)dbTally.h;
+		img_handle = iter->second.GetImage(vg, w, h, *text);
+		if(img_handle != 0)
+			drawimage(vg, dbTally.x, dbTally.top_y(), w, h, img_handle);
+		else
+			text = std::shared_ptr<std::string>();
+	}
+	if(img_handle == 0)
+	{
+		curTally->BG(tval)->Fill(vg);
+		dbTally.Roundrect(vg, dbTally.h/9.8f);
+		curTally->FG(tval)->Fill(vg);
+		const auto & zone = GetZone(row,col);
+		dbTally.TextMid(vg, text, FONT(curTally->IsMonoSpaced()), global.TextSizes[zone], global.LabelSizes[zone], curTally->Label(tval));
+	}
+
+}
+
+void RegionState::DrawTallies(NVGcontext * vg, OverallState &global, const timeval & tval)
+{
+	if(TD.nRows > 0)
+	{
+		DisplayBox db = TallyBox();
+		VGfloat row_height = (db.h)/((VGfloat)TD.nRows);
+		VGfloat buffer = row_height*.02f;
+		VGfloat col_width_default = db.w/((VGfloat)TD.nCols_default);
+		//float y_offset = height/10.0f;
+		for(int row = 0; row < TD.nRows; row++)
+		{
+			VGfloat base_y = db.y - ((VGfloat)row)*row_height;
+			int col_count = TD.nCols[row];
+			VGfloat col_width = col_width_default;
+			if(col_count <= 0)
+				col_count = TD.nCols_default;
+			else
+				col_width = db.w/((VGfloat)col_count);
+			for(int col = 0; col < col_count; col++)
+			{
+				DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
+				DrawTally(vg, dbTally, row, col, global, tval);
+			}
+		}
+	}
+}
+
+

@@ -36,7 +36,7 @@ void OverallState::SetLandscape(bool bLandscape)
 }
 
 
-bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions, ImagesMap & images, struct timeval & tvCur)
+bool OverallState::HandleClockMessages(std::queue<std::shared_ptr<ClockMsg> > &msgs, struct timeval & tvCur)
 {
 	bool bSizeChanged = false;
 	while(!msgs.empty())
@@ -45,7 +45,7 @@ bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 		msgs.pop();
 		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetGlobal>(pMsg))
 		{
-			globalState.UpdateFromMessage(castCmd);
+			UpdateFromMessage(castCmd);
 			continue;
 		}
 
@@ -58,18 +58,18 @@ bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 				regionIndex = regionCmd->regionIndex;
 			else
 			{
-				if(UpdateCount(regions, 1))
+				if(UpdateRegionCount(1))
 				{
 					bSizeChanged = true;
 				}
 				bMaxRegion = true;
 			}
 		}
-		if(!regions[regionIndex])
+		if(!Regions[regionIndex])
 		{
-			regions[regionIndex] = std::make_shared<RegionState>();
+			Regions[regionIndex] = std::make_shared<RegionState>();
 		}
-		std::shared_ptr<RegionState> pRS = regions[regionIndex];
+		std::shared_ptr<RegionState> pRS = Regions[regionIndex];
 
 		if(bMaxRegion && (pRS->x() != 0.0f || pRS->y() != 1.0f || pRS->width() != 1.0f || pRS->height() != 1.0f))
 		{
@@ -79,20 +79,20 @@ bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 
 		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_ClearImages>(pMsg))
 		{
-			images.clear();
+			Images.clear();
 		}
 		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_StoreImage>(pMsg))
 		{
-			if(!images[castCmd->name].IsSameSource(castCmd->pSourceBlob))
-				images[castCmd->name] = ScalingImage(castCmd->pParsedImage, castCmd->pSourceBlob);
+			if(!Images[castCmd->name].IsSameSource(castCmd->pSourceBlob))
+				Images[castCmd->name] = ScalingImage(castCmd->pParsedImage, castCmd->pSourceBlob);
 		}
 		else if(auto castCmd = std::dynamic_pointer_cast<ResizedImage>(pMsg))
 		{
-			images[castCmd->Name].UpdateFromResize(castCmd);
+			Images[castCmd->Name].UpdateFromResize(castCmd);
 		}
 		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetRegionCount>(pMsg))
 		{
-			if(UpdateCount(regions, castCmd->iCount))
+			if(UpdateRegionCount(castCmd->iCount))
 			{
 				bSizeChanged = true;
 			}
@@ -188,10 +188,10 @@ bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, Regions
 	return bSizeChanged;
 }
 
-bool UpdateCount(RegionsMap &regions, int newCount)
+bool OverallState::UpdateRegionCount(int newCount)
 {
 	std::set<int> removeIndices;
-	for(const auto & item: regions)
+	for(const auto & item: Regions)
 	{
 		if(item.first >= newCount || item.first < 0)
 			removeIndices.insert(item.first);
@@ -200,7 +200,7 @@ bool UpdateCount(RegionsMap &regions, int newCount)
 	{
 		for(int index: removeIndices)
 		{
-			regions.erase(index);
+			Regions.erase(index);
 		}
 		return true;
 	}

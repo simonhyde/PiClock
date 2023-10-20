@@ -43,8 +43,8 @@ public:
 	ScalingImage(std::shared_ptr<Magick::Image> pSrc, std::shared_ptr<Magick::Blob> pBlob);
 	//Empty constructor required for std::map, shouldn't get called;
 	ScalingImage();
-	bool IsValid();
-	const int GetImage(NVGcontext* vg, int w, int h, const std::string & name);
+	bool IsValid() const;
+	int GetImage(NVGcontext* vg, int w, int h, const std::string & name);
 	void UpdateFromResize(std::shared_ptr<ResizedImage> pResize);
 	bool IsSameSource(std::shared_ptr<Magick::Blob> pOtherBlob);
 	~ScalingImage();

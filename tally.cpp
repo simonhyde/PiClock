@@ -1,6 +1,7 @@
 #include "tally.h"
 
 
+
 std::shared_ptr<TallyState> SimpleTallyState::SetLabel(const std::string & label) const
 {
     //If it's identical, then return empty pointer

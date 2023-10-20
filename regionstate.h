@@ -7,6 +7,7 @@
 #include "displaybox.h"
 
 class RegionState;
+class OverallState;
 
 typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap;
 
@@ -40,6 +41,9 @@ public:
 
 	const std::string & GetZone(int row, int col);
 
+	void DrawTallies(NVGcontext * vg, OverallState &global, const timeval & tval);
+
+
 //Simple accessor methods
 	bool Rotate();
 	bool AnalogueClock(DisplayBox & dBox, bool &bLocal, std::shared_ptr<const std::map<int, VGfloat> > &hours_x, std::shared_ptr<const std::map<int, VGfloat> > &hours_y, int &numbers);
@@ -69,6 +73,7 @@ public:
 	static bool DigitalClockPrefix(const RegionsMap &regions);
 
 private:
+	void DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval);
 
 	bool m_bRecalcReqd;
 	bool m_bRotationReqd;

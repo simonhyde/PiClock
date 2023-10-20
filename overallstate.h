@@ -19,13 +19,20 @@ public:
 
 	void SetLandscape(bool bLandscape);
 
+    RegionsMap Regions;
+
+    ImagesMap Images;
+	
+    std::map<std::string, int> TextSizes;
+	std::map<std::string, int> LabelSizes;
+
+    bool HandleClockMessages(std::queue<std::shared_ptr<ClockMsg> > &msgs, struct timeval & tvCur);
+
+
 private:
+    bool UpdateRegionCount(int newCount);
 	bool m_bLandscape = true;
 	bool m_bScreenSaver = true;
 };
-
-extern bool handle_clock_messages(std::queue<std::shared_ptr<ClockMsg> > &msgs, RegionsMap & regions, ImagesMap & images, struct timeval & tvCur);
-
-extern bool UpdateCount(RegionsMap &regions, int newCount);
 
 #endif

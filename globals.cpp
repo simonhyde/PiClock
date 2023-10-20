@@ -10,4 +10,3 @@ std::vector<std::string> tally_hosts;
 std::map<unsigned int,bool> bComms;
 MessageQueue msgQueue;
 
-OverallState globalState;

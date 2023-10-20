@@ -7,7 +7,16 @@
 
 //Legacy type from old OpenVG libraries...
 typedef float VGfloat;
-
+extern NVGcolor colWhite;
+extern NVGcolor colMidGray;
+extern NVGcolor colBlack;
+extern NVGcolor colRed;
+extern NVGcolor colBlue;
+extern NVGcolor colNtpSynced;
+extern NVGcolor colNtpNotSync[2];
+extern NVGcolor colNtpText;
+extern NVGcolor colCommsOk;
+extern NVGcolor colCommsFail;
 extern void Rotate(NVGcontext *vg, float degrees);
 extern void Roundrect(NVGcontext *vg, float x, float y, float w, float h, float r);
 extern void Rect(NVGcontext *vg, float x, float y, float w, float h);

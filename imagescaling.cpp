@@ -72,11 +72,11 @@ ScalingImage::ScalingImage(std::shared_ptr<Magick::Image> pSrc, std::shared_ptr<
 //Empty constructor required for std::map, shouldn't get called;
 ScalingImage::ScalingImage()
 {}
-bool ScalingImage::IsValid()
+bool ScalingImage::IsValid() const
 {
     return (bool)pSource;
 }
-const int ScalingImage::GetImage(NVGcontext* vg, int w, int h, const std::string & name)
+int ScalingImage::GetImage(NVGcontext* vg, int w, int h, const std::string & name)
 {
     savedVg = vg;
     if(!IsValid())

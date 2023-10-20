@@ -39,14 +39,16 @@
 #include "regionstate.h"
 #include "imagescaling.h"
 #include "overallstate.h"
+#include "vectorclock.h"
 
 
 #define FPS 25
 #define FRAMES 0
-//Number of micro seconds into a second to start moving the second hand
-#define MOVE_HAND_AT	900000
 
 namespace po = boost::program_options;
+
+static OverallState globalState;
+
 
 int GPI_MODE = 0;
 int init_window_width = 0;
@@ -164,15 +166,9 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 {
 	static VGfloat commsWidth = -1;
 	static VGfloat commsTextHeight = 0;
-	static RegionsMap regions;
 	static VGfloat offset = iheight*.05f;
 
-	static std::map<std::string, int> textSizes;
-	static std::map<std::string, int> labelSizes;
-
 	static time_t tm_last_comms_good = 0;
-
-	static ImagesMap images;
 
 	static VGfloat h_offset_pos = 0;
 	static VGfloat v_offset_pos = 0;
@@ -183,31 +179,18 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 	static bool bRecalcTextsNext = true;
 
-	static NVGcolor colWhite = nvgRGBf(1.0f,1.0f,1.0f);
-	static NVGcolor colMidGray = nvgRGBf(0.5f,0.5f,0.5f);
-	//Unused at the moment, uncomment to re-enable
-	//static NVGcolor colBlack = nvgRGBf(0.0f,0.0f,0.0f);
-	static NVGcolor colRed = nvgRGBf(1.0f,0.0f,0.0f);
-	//Unused, at the moment, uncomment to re-enable
-	//static NVGcolor colBlue = nvgRGBf(0.0f,0.0f,1.0f);
-        static NVGcolor colNtpSynced = nvgRGB(0,100,0);
-        static NVGcolor colNtpNotSync[2] = {nvgRGB(120,0,120),nvgRGB(120,0,0)};
-	static NVGcolor colNtpText = nvgRGB(200,200,200);
-	static NVGcolor colCommsOk = nvgRGB(0,100,0);
-	static NVGcolor colCommsFail = nvgRGB(190,0,0);
-
 	RotateTextClipCache();
 
-	if(regions.empty())
+	if(globalState.Regions.empty())
 		//Add 1 region, for when we have no TCP connection, should probably only happen on first pass
-		regions[0] = std::make_shared<RegionState>();
+		globalState.Regions[0] = std::make_shared<RegionState>();
 	//Handle any queued messages
 	std::queue<std::shared_ptr<ClockMsg> > newMsgs;
 	msgQueue.Get(newMsgs);
-	bool bRecalcTexts = handle_clock_messages(newMsgs, regions, images, tval) || bRecalcTextsNext;
+	bool bRecalcTexts = globalState.HandleClockMessages(newMsgs, tval) || bRecalcTextsNext;
 	bRecalcTextsNext = false;
 	
-	bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(regions);
+	bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(globalState.Regions);
 
 	//nvgTransform(vg, 1,iheight,0,-1,0,0);
 	//Start(iwidth, iheight);					// Start the picture
@@ -238,7 +221,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		nvgTranslate(vg, h_offset_pos, v_offset_pos);
 	}
 	bool bFirst = true;
-	for(const auto & region : regions)
+	for(const auto & region : globalState.Regions)
 	{
 		auto &RS = *region.second;
 		VGfloat inner_height = display_height * RS.height();
@@ -249,9 +232,9 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	}
 	if(bRecalcTexts)
 	{
-		textSizes.clear();
-		labelSizes.clear();
-		for(const auto & region : regions)
+		globalState.TextSizes.clear();
+		globalState.LabelSizes.clear();
+		for(const auto & region : globalState.Regions)
 		{
 			auto &RS = *region.second;
 			RS.SetDefaultZone("R" + std::to_string(region.first));
@@ -275,17 +258,17 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 						continue;
 					auto label = item->Label(tval);
 					auto text = item->Text(tval);
-					auto iter = images.end();
-					if(text && ((iter = images.find(*text)) == images.end() || !iter->second.IsValid()))
+					auto iter = globalState.Images.end();
+					if(text && ((iter = globalState.Images.find(*text)) == globalState.Images.end() || !iter->second.IsValid()))
 					{
 						auto maxItemSize = MaxPointSize(vg, col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
-						if(textSizes[zone] == 0 || textSizes[zone] > maxItemSize)
-							textSizes[zone] = maxItemSize;
+						if(globalState.TextSizes[zone] == 0 || globalState.TextSizes[zone] > maxItemSize)
+							globalState.TextSizes[zone] = maxItemSize;
 						if(label)
 						{
 							auto maxLabelSize = MaxPointSize(vg, -1, row_height *.2f, label->c_str(), FONT(false));
-							if(labelSizes[zone] == 0 || labelSizes[zone] > maxLabelSize)
-								labelSizes[zone] = maxLabelSize;
+							if(globalState.LabelSizes[zone] == 0 || globalState.LabelSizes[zone] > maxLabelSize)
+								globalState.LabelSizes[zone] = maxLabelSize;
 						}
 					}
 				}
@@ -296,10 +279,9 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	gettimeofday(&tval, NULL);
 	localtime_r(&tval.tv_sec, &tm_local);
 	gmtime_r(&tval.tv_sec, &tm_utc);
-	for(const auto & region : regions)
+	for(const auto & region : globalState.Regions)
 	{
 		std::string profName;
-		int i;
 		std::shared_ptr<RegionState> pRS = region.second;
 
 		VGfloat return_x = display_width *pRS->x();
@@ -342,7 +324,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 				bRecalcTextsNext = true;
 			pRS->TD.nRows = 2;
 			pRS->TD.nCols_default = 1;
-			pRS->TD.nCols.empty();
+			pRS->TD.nCols.clear();
 			uint8_t gpis = pifacedigital_read_reg(INPUT,0);
 			uint8_t colour_weight = (gpis & 1) ? 50:255;
 			uint8_t fill_weight = (gpis & 1)? 50:255;
@@ -436,7 +418,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 				//Stop showing stuff after 5 seconds of comms failed...
 				else if(tm_last_comms_good < tval.tv_sec - 5)
 				{
-					for(auto & reg: regions)
+					for(auto & reg: globalState.Regions)
 					{
 						reg.second->TD.clear();
 					}
@@ -446,52 +428,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		if(GPI_MODE)
 		{
 			profName = pRS->TD.sProfName;
-			if(pRS->TD.nRows > 0)
-			{
-				DisplayBox db = pRS->TallyBox();
-				VGfloat row_height = (db.h)/((VGfloat)pRS->TD.nRows);
-				VGfloat buffer = row_height*.02f;
-				VGfloat col_width_default = db.w/((VGfloat)pRS->TD.nCols_default);
-				//float y_offset = height/10.0f;
-				for(int row = 0; row < pRS->TD.nRows; row++)
-				{
-					VGfloat base_y = db.y - ((VGfloat)row)*row_height;
-					int col_count = pRS->TD.nCols[row];
-					VGfloat col_width = col_width_default;
-					if(col_count <= 0)
-						col_count = pRS->TD.nCols_default;
-					else
-						col_width = db.w/((VGfloat)col_count);
-					for(int col = 0; col < col_count; col++)
-					{
-						auto curTally = pRS->TD.displays[row][col];
-						if(!curTally)
-							continue;
-						DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
-						auto text = curTally->Text(tval);
-						auto iter = images.end();
-						int img_handle = 0;
-						if(text && (iter = images.find(*text)) != images.end() && iter->second.IsValid())
-						{
-							int w = (int)dbTally.w;
-							int h = (int)dbTally.h;
-							img_handle = iter->second.GetImage(vg, w, h, *text);
-							if(img_handle != 0)
-								drawimage(vg, dbTally.x, dbTally.top_y(), w, h, img_handle);
-							else
-								text = std::shared_ptr<std::string>();
-						}
-						if(img_handle == 0)
-						{
-							curTally->BG(tval)->Fill(vg);
-							dbTally.Roundrect(vg, row_height/10.0f);
-							curTally->FG(tval)->Fill(vg);
-							const auto & zone = pRS->GetZone(row,col);
-							dbTally.TextMid(vg, text, FONT(curTally->IsMonoSpaced()), textSizes[zone], labelSizes[zone], curTally->Label(tval));
-						}
-					}
-				}
-			}
+			pRS->DrawTallies(vg, globalState, tval);
 		}
 		//Done with displays, back to common code...
 		db = pRS->StatusBox(pointSize);
@@ -510,114 +447,11 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		int numbers;
 		std::shared_ptr<const std::map<int, VGfloat>> hours_x;
 		std::shared_ptr<const std::map<int, VGfloat>> hours_y;
+		//Right, now start drawing the clock if it exists in our region
+		//pRS->DrawAnalogueClock(vg);
 		if(pRS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
 		{
-			//Right, now start drawing the clock
-
-			//Move to the centre of the clock
-			VGfloat move_x = db.mid_x();
-			VGfloat move_y = db.mid_y();
-			
-			nvgTranslate(vg, move_x, move_y);
-
-			if(numbers)
-			{
-				//Write out hour labels around edge of clock
-				for(i = 0; i < 12; i++)
-				{
-					char buf[5];
-					sprintf(buf, "%d", i? i:12);
-					TextMid(vg, hours_x->at(i),hours_y->at(i), buf, FONT_HOURS, db.h/15.0f);
-				}
-			}
-			//Spin clock around 180 degrees because this code originally worked with Y co-ordinates increasing as you went up
-			Rotate(vg, 180.0f);
-			//Go around drawing dashes around edge of clock
-			nvgStrokeWidth(vg, db.w/100.0f);
-			VGfloat start, end_short, end_long;
-			VGfloat min_dim = std::min(db.h,db.w);
-			if(numbers == 1)
-			{
-				start = min_dim *7.5f/20.0f;
-				end_short = min_dim *6.7f/20.0f;
-				end_long = min_dim *6.3f/20.0f;
-			}
-			else
-			{
-				start = min_dim *9.5f/20.0f;
-				end_short = min_dim *8.8f/20.0f;
-				end_long = min_dim *8.4f/20.0f;
-			}
-#ifndef NO_COLOUR_CHANGE
-			nvgStrokeColor(vg,colRed);
-#endif
-#define tm_now	(bLocal? tm_local : tm_utc)
-			//As we go around we actually keep drawing in the same place every time, but we keep rotating the co-ordinate space around the centre point of the clock...
-			for(i = 0; i < 60; i++)
-			{
-				if((i %5) == 0)
-					Line(vg, 0, start, 0, end_long);
-				else
-					Line(vg, 0, start, 0, end_short);
-				Rotate(vg, 6);
-#ifndef NO_COLOUR_CHANGE
-				//Fade red slowly out over first second
-				if(i == tm_now.tm_sec)
-				{
-					if(i < 1)
-					{
-						//Example to fade over 2 seconds...
-						//VGfloat fade = 128.0f * tm_now.tm_sec +  127.0f * ((VGfloat)tval.tv_usec)/1000000.0f;
-						VGfloat fade = ((VGfloat)tval.tv_usec)/200000.0f;
-						if(fade > 1.0f)
-							fade = 1.0f;
-						nvgStrokeColor(vg, nvgRGBf(1.0f, fade, fade));
-					}
-					else
-						nvgStrokeColor(vg, colWhite);
-				}
-#endif
-			}
-			nvgStrokeColor(vg, colWhite);
-			//Again, rotate co-ordinate space so we're just drawing an upright line every time...
-			nvgStrokeWidth(vg, db.w/200.0f);
-			//VGfloat sec_rotation = -(6.0f * tm_now.tm_sec +((VGfloat)tval.tv_usec*6.0f/1000000.0f));
-			VGfloat sec_rotation = (6.0f * tm_now.tm_sec);
-			VGfloat sec_part = sec_rotation;
-			if(tval.tv_usec > MOVE_HAND_AT)
-				sec_rotation += ((VGfloat)(tval.tv_usec - MOVE_HAND_AT)*6.0f/100000.0f);
-			//Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
-			sec_part += ((VGfloat)tval.tv_usec)*6.0f/1000000.0f;
-			VGfloat min_rotation = 6.0f *tm_now.tm_min + sec_part/60.0f;
-			VGfloat hour_rotation = 30.0f *tm_now.tm_hour + min_rotation/12.0f;
-			Rotate(vg, hour_rotation);
-			Line(vg, 0,0,0,min_dim/4.0f); /* half-length hour hand */
-			Rotate(vg, min_rotation - hour_rotation);
-			Line(vg, 0,0,0,min_dim/2.0f); /* minute hand */
-			Rotate(vg, sec_rotation - min_rotation);
-			nvgStrokeColor(vg, colRed);
-			Line(vg, 0,-db.h/10.0f,0,min_dim/2.0f); /* second hand, with overhanging tail */
-			//Draw circle in centre
-			nvgFillColor(vg, colRed);
-			nvgBeginPath(vg);
-			nvgCircle(vg, 0,0,db.w/150.0f);
-			nvgFill(vg);
-			Rotate(vg, -sec_rotation -180.0f);
-			//Now draw some dots for seconds...
-#ifdef SECOND_DOTS
-			nvgStrokeWidth(vg, db.w/100.0f);
-			nvgStrokeColor(vg, colBlue);
-			VGfloat pos = db.h*7.9f/20.0f;
-			for(i = 0; i < 60; i++)
-			{
-				if(i <= tm_now.tm_sec)
-				{
-					Line(vg, 0, pos, 0, pos -10);
-				}
-				Rotate(vg, -6);
-			}
-#endif
-
+			DrawVectorClock(vg, db, hours_x, hours_y, numbers, bLocal? tm_local:tm_utc, tval.tv_usec);
 		}
 		//Translate back to the origin...
 		nvgRestore(vg);

@@ -3,6 +3,18 @@
 #include <cmath>
 #include <memory>
 
+NVGcolor colWhite = nvgRGBf(1.0f,1.0f,1.0f);
+NVGcolor colMidGray = nvgRGBf(0.5f,0.5f,0.5f);
+NVGcolor colBlack = nvgRGBf(0.0f,0.0f,0.0f);
+NVGcolor colRed = nvgRGBf(1.0f,0.0f,0.0f);
+NVGcolor colBlue = nvgRGBf(0.0f,0.0f,1.0f);
+NVGcolor colNtpSynced = nvgRGB(0,100,0);
+NVGcolor colNtpNotSync[2] = {nvgRGB(120,0,120),nvgRGB(120,0,0)};
+NVGcolor colNtpText = nvgRGB(200,200,200);
+NVGcolor colCommsOk = nvgRGB(0,100,0);
+NVGcolor colCommsFail = nvgRGB(190,0,0);
+
+
 static std::map<Fontinfo,float> fontHeights;
 static std::shared_ptr<std::map<std::pair<std::string, float>, std::string> > clippedTextCache;
 static std::shared_ptr<std::map<std::pair<std::string, float>, std::string> > prevClippedTextCache;
