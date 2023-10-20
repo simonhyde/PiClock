@@ -1,4 +1,3 @@
-ntpstat.o
 piclockNVG
-piclock.o
-nvg_main.o
+build/
+.vscode

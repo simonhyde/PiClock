@@ -8,12 +8,9 @@
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 
+#include "blocking_tcp_client.h"
 #include <boost/asio/connect.hpp>
-#include <boost/asio/deadline_timer.hpp>
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read_until.hpp>
-#include <boost/asio/streambuf.hpp>
 #include <boost/system/system_error.hpp>
 #include <boost/asio/write.hpp>
 #include <cstdlib>
@@ -50,13 +47,10 @@ using boost::lambda::_1;
 // handlers. For a given socket operation, the client object runs the
 // io_service to block thread execution until the actor completes.
 //
-class client
-{
-public:
-  client()
+client::client()
     : socket_(io_service_),
       deadline_(io_service_)
-  {
+{
     // No deadline is required until the first socket operation is started. We
     // set the deadline to positive infinity so that the actor takes no action
     // until a specific deadline is set.
@@ -64,11 +58,11 @@ public:
 
     // Start the persistent actor that checks for deadline expiry.
     check_deadline();
-  }
+}
 
-  void connect(const std::string& host, const std::string& service,
+void client::connect(const std::string& host, const std::string& service,
       boost::posix_time::time_duration timeout)
-  {
+{
     // Resolve the host name and service to a list of endpoints.
     tcp::resolver::query query(host, service);
     tcp::resolver::iterator iter = tcp::resolver(io_service_).resolve(query);
@@ -103,10 +97,10 @@ public:
     if (ec || !socket_.is_open())
       throw boost::system::system_error(
           ec ? ec : boost::asio::error::operation_aborted);
-  }
+}
 
-  std::string read_line(boost::posix_time::time_duration timeout, char separator = '\n')
-  {
+std::string client::read_line(boost::posix_time::time_duration timeout, char separator)
+{
     // Set a deadline for the asynchronous operation. Since this function uses
     // a composed operation (async_read_until), the deadline applies to the
     // entire operation, rather than individual reads from the socket.
@@ -135,11 +129,11 @@ public:
     std::istream is(&input_buffer_);
     std::getline(is, line, separator);
     return line;
-  }
+}
 
-  void write_line(const std::string& line,
-      boost::posix_time::time_duration timeout, char separator = '\n')
-  {
+void client::write_line(const std::string& line,
+      boost::posix_time::time_duration timeout, char separator)
+{
     std::string data = line + separator;
 
     // Set a deadline for the asynchronous operation. Since this function uses
@@ -165,24 +159,23 @@ public:
 
     if (ec)
       throw boost::system::system_error(ec);
-  }
+}
 
-  void close()
-  {
+void client::close()
+{
     socket_.close();
-  }
+}
 
-  ~client()
-  {
+client::~client()
+{
     if(socket_.is_open())
     {
       close();
     }
-  }
+}
 
-private:
-  void check_deadline()
-  {
+void client::check_deadline()
+{
     // Check whether the deadline has passed. We compare the deadline against
     // the current time since a new asynchronous operation may have moved the
     // deadline before this actor had a chance to run.
@@ -201,13 +194,7 @@ private:
 
     // Put the actor back to sleep.
     deadline_.async_wait(bind(&client::check_deadline, this));
-  }
-
-  boost::asio::io_service io_service_;
-  tcp::socket socket_;
-  deadline_timer deadline_;
-  boost::asio::streambuf input_buffer_;
-};
+}
 
 #if 0
 //----------------------------------------------------------------------
