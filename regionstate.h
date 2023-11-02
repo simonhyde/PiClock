@@ -20,6 +20,8 @@ public:
 	bool LayoutEqual(std::shared_ptr<RegionState> pOther) const;
 	bool LayoutEqual(const RegionState & other) const;
 	bool RecalcDimensions(NVGcontext* vg, const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix);
+
+	void RecalcTexts(NVGcontext *vg, OverallState &globalState, const timeval &tval);
 	
 	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLayout> &pMsg);
 
@@ -43,6 +45,9 @@ public:
 
 	void DrawTallies(NVGcontext * vg, OverallState &global, const timeval & tval);
 
+	bool DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs);
+
+	bool DrawStatusArea(NVGcontext *vg, int ntp_state, bool bFlashPhase, unsigned int connCount, const std::map<unsigned int, bool> &connComms, const std::string &mac_addr);
 
 //Simple accessor methods
 	bool Rotate();
@@ -52,6 +57,9 @@ public:
 
 	bool DigitalLocal(DisplayBox & dBox, int & pointSize, std::string & prefix);
 	bool DigitalUTC(DisplayBox & dBox, int & pointSize, std::string & prefix);
+
+	bool HasStatusBox();
+
 	DisplayBox StatusBox(int &pointSize);
 
 	DisplayBox TallyBox();
@@ -74,9 +82,14 @@ public:
 
 private:
 	void DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval);
+	void DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashState);
+	bool DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int connCount, const std::map<unsigned int,bool> &connComms);
+	void DrawMacAddress(NVGcontext *vg, DisplayBox &db, const std::string &mac_addr);
+
 
 	bool m_bRecalcReqd;
 	bool m_bRotationReqd;
+	bool m_bStatusBox;
 	DisplayBox m_boxAnalogue;
 	int m_statusTextSize;
 	DisplayBox m_boxStatus, m_boxUTC, m_boxLocal, m_boxDate, m_boxTallies;
@@ -102,5 +115,7 @@ private:
 	VGfloat m_height = 1.0;
 	VGfloat prev_height = 0.0;
 	VGfloat prev_width = 0.0;
+	VGfloat comms_width = -1.0f;
+	VGfloat comms_text_height = 0.0f;
 };
 #endif

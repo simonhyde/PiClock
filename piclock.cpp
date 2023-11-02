@@ -81,8 +81,8 @@ void read_settings(const std::string & filename,
 {
 	po::options_description desc("Options");
 	desc.add_options()
-                ("init_window_width", po::value<int>(&init_window_width)->default_value(0), "Initial window width, specifying 0 gives fullscreen mode")
-                ("init_window_height", po::value<int>(&init_window_height)->default_value(0), "Initial window height, specifying 0 gives fullscreen mode")
+		("init_window_width", po::value<int>(&init_window_width)->default_value(0), "Initial window width, specifying 0 gives fullscreen mode")
+		("init_window_height", po::value<int>(&init_window_height)->default_value(0), "Initial window height, specifying 0 gives fullscreen mode")
 		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=PiFace Digital, 2=TCP/IP")
 		("tally_remote_host", po::value<std::vector<std::string>>(&tally_hosts), "Remote tally host, may be specified multiple times for multiple connections")
 		("tally_remote_port", po::value<std::string>(&TALLY_SERVICE)->default_value("6254"), "Port (or service) to connect to on (default 6254)")
@@ -164,8 +164,6 @@ int main(int argc, char *argv[]) {
 }
 void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 {
-	static VGfloat commsWidth = -1;
-	static VGfloat commsTextHeight = 0;
 	static VGfloat offset = iheight*.05f;
 
 	static time_t tm_last_comms_good = 0;
@@ -220,15 +218,13 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		}
 		nvgTranslate(vg, h_offset_pos, v_offset_pos);
 	}
-	bool bFirst = true;
 	for(const auto & region : globalState.Regions)
 	{
 		auto &RS = *region.second;
 		VGfloat inner_height = display_height * RS.height();
 		VGfloat inner_width = display_width * RS.width();
 
-		bRecalcTexts = RS.RecalcDimensions(vg, tm_utc, tm_local, inner_width, inner_height, display_width, display_height, bFirst, bDigitalClockPrefix) || bRecalcTexts;
-		bFirst = false;
+		bRecalcTexts = RS.RecalcDimensions(vg, tm_utc, tm_local, inner_width, inner_height, display_width, display_height, region.first == 0, bDigitalClockPrefix) || bRecalcTexts;
 	}
 	if(bRecalcTexts)
 	{
@@ -238,43 +234,8 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		{
 			auto &RS = *region.second;
 			RS.SetDefaultZone("R" + std::to_string(region.first));
-			DisplayBox db = RS.TallyBox();
-			VGfloat row_height = (db.h)/((VGfloat)RS.TD.nRows);
-			VGfloat col_width_default = db.w/((VGfloat)RS.TD.nCols_default);
-
-			for(int row = 0; row < RS.TD.nRows; row++)
-			{
-				int col_count = RS.TD.nCols[row];
-				VGfloat col_width = col_width_default;
-				if(col_count <= 0)
-					col_count = RS.TD.nCols_default;
-				else
-					col_width = db.w/((VGfloat)col_count);
-				for(int col = 0; col < col_count; col++)
-				{
-					const std::string & zone = RS.GetZone(row, col);
-					auto item = RS.TD.displays[row][col];
-					if(!item)
-						continue;
-					auto label = item->Label(tval);
-					auto text = item->Text(tval);
-					auto iter = globalState.Images.end();
-					if(text && ((iter = globalState.Images.find(*text)) == globalState.Images.end() || !iter->second.IsValid()))
-					{
-						auto maxItemSize = MaxPointSize(vg, col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
-						if(globalState.TextSizes[zone] == 0 || globalState.TextSizes[zone] > maxItemSize)
-							globalState.TextSizes[zone] = maxItemSize;
-						if(label)
-						{
-							auto maxLabelSize = MaxPointSize(vg, -1, row_height *.2f, label->c_str(), FONT(false));
-							if(globalState.LabelSizes[zone] == 0 || globalState.LabelSizes[zone] > maxLabelSize)
-								globalState.LabelSizes[zone] = maxLabelSize;
-						}
-					}
-				}
-			}
+			RS.RecalcTexts(vg, globalState, tval);
 		}
-		commsWidth = -1;
 	}
 	gettimeofday(&tval, NULL);
 	localtime_r(&tval.tv_sec, &tm_local);
@@ -340,119 +301,29 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 				    "On Air");
 		}
 
-		//Draw NTP sync status
-		db = pRS->StatusBox(pointSize);
-		if(db.w > 0.0f && db.h > 0.0f)
+		if(pRS->HasStatusBox())
 		{
-			nvgFillColor(vg,colWhite);
-			const char * sync_text;
-			if(ntp_state_data.status == 0)
+			bool bAnyComms = pRS->DrawStatusArea(vg, ntp_state_data.status, tval.tv_sec % 2, (GPI_MODE == 2)? tally_hosts.size() : 0, bComms, mac_address);
+			if(bAnyComms)
 			{
-				nvgFillColor(vg,colNtpSynced);
-				sync_text = "Synchronised";
+				tm_last_comms_good = tval.tv_sec;
 			}
-			else
+			//Stop showing stuff after 5 seconds of comms failed...
+			else if(tm_last_comms_good < tval.tv_sec - 5)
 			{
-				/* flash between red and purple once a second */
-				nvgFillColor(vg,colNtpNotSync[(tval.tv_sec %2)]);
-				if(ntp_state_data.status == 1)
-					sync_text = "Synchronising..";
-				else
-					sync_text = "Unknown Synch!";
-			}
-			const char * header_text = "NTP-Derived Clock";
-			auto statusBoxLen = std::max(TextWidth(vg, sync_text, FONT_PROP, pointSize),
-						     TextWidth(vg, header_text, FONT_PROP, pointSize))*1.1f;
-			auto statusTextHeight = TextHeight(vg, FONT_PROP, pointSize);
-			//Draw a box around NTP status
-			Rect(vg, db.x + db.w - statusBoxLen, db.top_y() , statusBoxLen, db.h);
-			nvgFillColor(vg, colNtpText);
-			//2 bits of text
-			TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight *.8f, sync_text, FONT_PROP, pointSize);
-			TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight*2.f, header_text, FONT_PROP, pointSize);
-
-			db.w -= statusBoxLen;
-
-			if(GPI_MODE == 2)
-			{
-				//Draw comms status
-				if(commsWidth < 0)
+				for(auto & reg: globalState.Regions)
 				{
-					commsWidth =
-						std::max(TextWidth(vg, "Comms OK", FONT_PROP, pointSize),
-
-							 TextWidth(vg, "Comms Failed", FONT_PROP, pointSize));
-					for(unsigned int window = 0; window < tally_hosts.size(); window++)
-					{
-						char buf[512];
-						buf[511] = '\0';
-						snprintf(buf, 511, "Tally Server %d", window + 1);
-						commsWidth = std::max(commsWidth, TextWidth(vg, buf, FONT_PROP, pointSize));
-					}
-					commsWidth *= 1.2f;
-					commsTextHeight = TextHeight(vg, FONT_PROP, pointSize);
-				}
-				bool bAnyComms = false;
-				for(unsigned int window = 0; window < tally_hosts.size(); window++)
-				{
-					bAnyComms = bAnyComms || bComms[window];
-					if(bComms[window])
-						nvgFillColor(vg,colCommsOk);
-					else
-						nvgFillColor(vg,colCommsFail);
-					VGfloat base_x = db.x + db.w - commsWidth * (VGfloat)(tally_hosts.size()-window);
-					Rect(vg, base_x, db.top_y(), commsWidth, db.h);
-					nvgFillColor(vg,colNtpText);
-					char buf[512];
-					buf[511] = '\0';
-					base_x += commsWidth*.5f;
-					snprintf(buf, 511, "Tally Server %d", window + 1);
-					TextMid(vg, base_x, db.y - commsTextHeight*2.0f, buf, FONT_PROP, pointSize);
-					snprintf(buf, 511, "Comms %s", bComms[window]? "OK" : "Failed");
-					TextMid(vg, base_x, db.y - commsTextHeight*0.8f, buf, FONT_PROP, pointSize);
-				}
-				if(bAnyComms)
-				{
-					tm_last_comms_good = tval.tv_sec;
-				}
-				//Stop showing stuff after 5 seconds of comms failed...
-				else if(tm_last_comms_good < tval.tv_sec - 5)
-				{
-					for(auto & reg: globalState.Regions)
-					{
-						reg.second->TD.clear();
-					}
+					reg.second->TD.clear();
 				}
 			}
 		}
+		//Draw Tally Displays
 		if(GPI_MODE)
 		{
-			profName = pRS->TD.sProfName;
 			pRS->DrawTallies(vg, globalState, tval);
 		}
-		//Done with displays, back to common code...
-		db = pRS->StatusBox(pointSize);
-		if(db.w > 0.0f && db.h > 0.0f && GPI_MODE == 2)
-		{
-			nvgFillColor(vg, colMidGray);
-			char buf[8192];
-			buf[sizeof(buf)-1] = '\0';
-			if(profName.empty())
-				snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_address.c_str());
-			else
-				snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_address.c_str(), profName.c_str());
-			Text(vg, db.x, db.y, buf, FONT_PROP, pointSize);
-		}
-		nvgFillColor(vg,colWhite);
-		int numbers;
-		std::shared_ptr<const std::map<int, VGfloat>> hours_x;
-		std::shared_ptr<const std::map<int, VGfloat>> hours_y;
 		//Right, now start drawing the clock if it exists in our region
-		//pRS->DrawAnalogueClock(vg);
-		if(pRS->AnalogueClock(db, bLocal, hours_x, hours_y, numbers))
-		{
-			DrawVectorClock(vg, db, hours_x, hours_y, numbers, bLocal? tm_local:tm_utc, tval.tv_usec);
-		}
+		pRS->DrawAnalogueClock(vg, tm_local, tm_utc, tval.tv_usec);
 		//Translate back to the origin...
 		nvgRestore(vg);
 	}

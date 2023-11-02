@@ -16,6 +16,7 @@ void DrawVectorClock(NVGcontext *vg, DisplayBox &db, const std::shared_ptr<const
     
     nvgTranslate(vg, move_x, move_y);
     nvgStrokeColor(vg, colWhite);
+	nvgFillColor(vg, colWhite);
 
     if(numbers)
     {

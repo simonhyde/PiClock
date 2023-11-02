@@ -1,5 +1,6 @@
 #include "regionstate.h"
 #include "overallstate.h"
+#include "vectorclock.h"
 
 
 RegionState::RegionState()
@@ -23,13 +24,14 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const struct tm & utc, const 
 {
 	auto day = (m_bDateLocal? local:utc).tm_mday;
 	bool bBoxLandscape = width > height;
+	m_bStatusBox = bStatus;
 	if(m_bRecalcReqd || lastDayOfMonth != day || prev_width != width || prev_height != height)
 	{
 		prev_width = width;
 		prev_height = height;
 		//Firstly the status text, which will always be in the bottom left corner
 		m_statusTextSize = std::min(displayWidth,displayHeight)/130.0f;
-		auto statusTextHeight = bStatus? TextHeight(vg, FONT_PROP, m_statusTextSize) : 0.0f;
+		auto statusTextHeight = m_bStatusBox? TextHeight(vg, FONT_PROP, m_statusTextSize) : 0.0f;
 		//Start off by assuming the text is the full width, this will change if we have an analogue clock and we're in landscape
 		auto textWidth = width;
 		
@@ -126,6 +128,45 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const struct tm & utc, const 
 	return false;
 }
 
+void RegionState::RecalcTexts(NVGcontext *vg, OverallState &globalState, const timeval &tval)
+{
+	DisplayBox &db = m_boxTallies;
+	VGfloat row_height = (db.h)/((VGfloat)TD.nRows);
+	VGfloat col_width_default = db.w/((VGfloat)TD.nCols_default);
+
+	for(int row = 0; row < TD.nRows; row++)
+	{
+		int col_count = TD.nCols[row];
+		VGfloat col_width = col_width_default;
+		if(col_count <= 0)
+			col_count = TD.nCols_default;
+		else
+			col_width = db.w/((VGfloat)col_count);
+		for(int col = 0; col < col_count; col++)
+		{
+			const std::string & zone = GetZone(row, col);
+			auto item = TD.displays[row][col];
+			if(!item)
+				continue;
+			auto label = item->Label(tval);
+			auto text = item->Text(tval);
+			auto iter = globalState.Images.end();
+			if(text && ((iter = globalState.Images.find(*text)) == globalState.Images.end() || !iter->second.IsValid()))
+			{
+				auto maxItemSize = MaxPointSize(vg, col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
+				if(globalState.TextSizes[zone] == 0 || globalState.TextSizes[zone] > maxItemSize)
+					globalState.TextSizes[zone] = maxItemSize;
+				if(label)
+				{
+					auto maxLabelSize = MaxPointSize(vg, -1, row_height *.2f, label->c_str(), FONT(false));
+					if(globalState.LabelSizes[zone] == 0 || globalState.LabelSizes[zone] > maxLabelSize)
+						globalState.LabelSizes[zone] = maxLabelSize;
+				}
+			}
+		}
+	}
+	comms_width = -1.0f;
+}
 void RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLayout> &pMsg)
 {
 	UpdateFromMessage(*pMsg);
@@ -213,6 +254,14 @@ bool RegionState::Rotate()
 {
 	return m_bRotationReqd;
 }
+bool RegionState::DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs)
+{
+	if(m_bAnalogueClock)
+	{
+		DrawVectorClock(vg, m_boxAnalogue, m_hours_x, m_hours_y, m_AnalogueNumbers, m_bAnalogueClockLocal? tm_local:tm_utc, usecs);
+	}
+	return m_bAnalogueClock;
+}
 bool RegionState::AnalogueClock(DisplayBox & dBox, bool &bLocal, std::shared_ptr<const std::map<int, VGfloat> > &hours_x, std::shared_ptr<const std::map<int, VGfloat> > &hours_y, int &numbers)
 {
 	dBox = m_boxAnalogue;
@@ -245,6 +294,11 @@ bool RegionState::DigitalUTC(DisplayBox & dBox, int & pointSize, std::string & p
 	pointSize = m_digitalPointSize;
 	prefix = "UTC ";
 	return m_bDigitalClockUTC;
+}
+
+bool RegionState::HasStatusBox()
+{
+	return m_bStatusBox;
 }
 
 DisplayBox RegionState::StatusBox(int &pointSize)
@@ -383,3 +437,112 @@ void RegionState::DrawTallies(NVGcontext * vg, OverallState &global, const timev
 }
 
 
+bool RegionState::DrawStatusArea(NVGcontext *vg, int ntp_state, bool bFlashPhase, unsigned int connCount, const std::map<unsigned int, bool> &connComms, const std::string &mac_addr)
+{
+	if(!m_bStatusBox)
+		return false;
+	bool bRet = true;
+	DisplayBox db = m_boxStatus;
+	nvgSave(vg);
+	DrawNtpState(vg, db, ntp_state, bFlashPhase);
+	if(connCount > 0)
+	{
+		bRet = DrawConnComms(vg, db, connCount, connComms)? bRet : false;
+		//Only draw MAC address/profile name if we're network-connected
+		DrawMacAddress(vg, db, mac_addr);
+	}
+	nvgRestore(vg);
+	return bRet;
+}
+
+bool RegionState::DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int connCount, const std::map<unsigned int,bool> &connComms)
+{
+	//Draw comms status
+	if(comms_width < 0)
+	{
+		comms_width =
+			std::max(TextWidth(vg, "Comms OK", FONT_PROP, m_statusTextSize),
+
+					TextWidth(vg, "Comms Failed", FONT_PROP, m_statusTextSize));
+		for(unsigned int window = 0; window < connCount; window++)
+		{
+			char buf[512];
+			buf[511] = '\0';
+			snprintf(buf, 511, "Tally Server %d", window + 1);
+			comms_width = std::max(comms_width, TextWidth(vg, buf, FONT_PROP, m_statusTextSize));
+		}
+		comms_width *= 1.2f;
+		comms_text_height = TextHeight(vg, FONT_PROP, m_statusTextSize);
+	}
+	bool bAnyComms = false;
+	for(unsigned int window = 0; window < connCount; window++)
+	{
+		bool bComms = false;
+		//Have to use this complicated lookup method because we're read-only accessing the std::map,
+		//and the normal [] accessors can't be used because they would create an empty element if a new index was used.
+		auto iter = connComms.find(window);
+		if(iter != connComms.end())
+			bComms = iter->second;
+		bAnyComms = bAnyComms || bComms;
+		if(bComms)
+			nvgFillColor(vg,colCommsOk);
+		else
+			nvgFillColor(vg,colCommsFail);
+		VGfloat base_x = db.x + db.w - comms_width * (VGfloat)(connCount-window);
+		Rect(vg, base_x, db.top_y(), comms_width, db.h);
+		nvgFillColor(vg,colNtpText);
+		char buf[512];
+		buf[511] = '\0';
+		base_x += comms_width*.5f;
+		snprintf(buf, 511, "Tally Server %d", window + 1);
+		TextMid(vg, base_x, db.y - comms_text_height*2.0f, buf, FONT_PROP, m_statusTextSize);
+		snprintf(buf, 511, "Comms %s", bComms? "OK" : "Failed");
+		TextMid(vg, base_x, db.y - comms_text_height*0.8f, buf, FONT_PROP, m_statusTextSize);
+	}
+	return bAnyComms;
+}
+
+void RegionState::DrawMacAddress(NVGcontext *vg, DisplayBox & db, const std::string &mac_addr)
+{
+	nvgFillColor(vg, colMidGray);
+	char buf[8192];
+	buf[sizeof(buf)-1] = '\0';
+	if(TD.sProfName.empty())
+		snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_addr.c_str());
+	else
+		snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_addr.c_str(), TD.sProfName.c_str());
+	Text(vg, db.x, db.y, buf, FONT_PROP, m_statusTextSize);
+}
+
+
+void RegionState::DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashPhase)
+{
+	nvgFillColor(vg,colWhite);
+	const char * sync_text;
+	if(ntp_state == 0)
+	{
+		nvgFillColor(vg,colNtpSynced);
+		sync_text = "Synchronised";
+	}
+	else
+	{
+		/* flash between red and purple once a second */
+		nvgFillColor(vg,colNtpNotSync[bFlashPhase?0:1]);
+		if(ntp_state == 1)
+			sync_text = "Synchronising..";
+		else
+			sync_text = "Unknown Synch!";
+	}
+	const char * header_text = "NTP-Derived Clock";
+	auto statusBoxLen = std::max(TextWidth(vg, sync_text, FONT_PROP, m_statusTextSize),
+						TextWidth(vg, header_text, FONT_PROP, m_statusTextSize))*1.1f;
+	auto statusTextHeight = TextHeight(vg, FONT_PROP, m_statusTextSize);
+	//Draw a box around NTP status
+	Rect(vg, db.x + db.w - statusBoxLen, db.top_y() , statusBoxLen, db.h);
+	nvgFillColor(vg, colNtpText);
+	//2 bits of text
+	TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight *.8f, sync_text, FONT_PROP, m_statusTextSize);
+	TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight*2.f, header_text, FONT_PROP, m_statusTextSize);
+
+	db.w -= statusBoxLen;
+}
