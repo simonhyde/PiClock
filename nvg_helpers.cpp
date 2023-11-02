@@ -198,23 +198,43 @@ void TextMidBottom(NVGcontext *vg, float x, float y, const char* s, const Fontin
 	nvgText(vg, x, y, s, NULL);
 }
 
+static bool CheckPointSize(NVGcontext *vg, float width, float height, const std::string & text, const int size)
+{
+	float bounds[4] = {0,0,0,0};//xmin,ymin,xmax,ymax
+	nvgTextAlign(vg, NVG_ALIGN_LEFT|NVG_ALIGN_TOP);
+	nvgFontSize(vg, size);
+	nvgTextBounds(vg, 0, 0, text.c_str(), NULL, bounds);
+	if(abs(bounds[3/*ymax*/]) > height)
+		return true;
+	else if(width > 0.0f && abs(bounds[2/*xmax*/]) > width)
+		return true;
+
+	return false;
+}
+
 int MaxPointSize(NVGcontext *vg, float width, float height, const std::string & text, const Fontinfo & f)
 {
-	int ret = 1;
+	int cur_size = 1;
 	bool bOverflowed = false;
 	nvgFontFace(vg, f.c_str());
 	while(!bOverflowed)
 	{
-		ret++;
-		float bounds[4] = {0,0,0,0};//xmin,ymin,xmax,ymax
-		nvgTextAlign(vg, NVG_ALIGN_LEFT|NVG_ALIGN_TOP);
-		nvgFontSize(vg, ret);
-		nvgTextBounds(vg, 0, 0, text.c_str(), NULL, bounds);
-		if(abs(bounds[3/*ymax*/]) > height)
-			bOverflowed = true;
-		else if(width > 0.0f && abs(bounds[2/*xmax*/]) > width)
-			bOverflowed = true;
+		cur_size*=2;
+		bOverflowed = CheckPointSize(vg, width, height, text, cur_size);
 	}
-	return ret - 1;
+	int minSize = cur_size/2;
+	int maxSize = cur_size;
+	while(minSize < (maxSize - 1))
+	{
+		cur_size = (maxSize - minSize)/2 + minSize;
+		if(CheckPointSize(vg, width, height, text, cur_size))
+		{
+			maxSize = cur_size;
+		}
+		else
+		{
+			minSize = cur_size;
+		}
+	}
+	return minSize;
 }
-
