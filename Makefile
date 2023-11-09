@@ -1,4 +1,4 @@
-all: piclockNVG
+all: piclock
 CPP_OBJS=piclock.o blocking_tcp_client.o control_tcp.o globals.o piclock_messages.o nvg_helpers.o tally.o tallycolour.o countdownclock.o regionstate.o displaybox.o imagescaling.o overallstate.o vectorclock.o
 C_OBJS=nvg_main.o ntpstat/ntpstat.o
 PICLOCK_SRCS=$(CPP_OBJS:%.o=%.cpp) $(C_OBJS:%.o:%.c)
@@ -18,8 +18,8 @@ build/nvg_main.o:	nvg_main.c
 	mkdir -p $(@D)
 	gcc -O4 -Wall $(CFLAGS) -MMD -c -o $@ $<
 
-piclockNVG:	$(PICLOCK_DEPENDS) nanovg/build/libnanovg.a
-	gcc -O4 -Wall -o piclockNVG $(PICLOCK_DEPENDS) `pkg-config --libs glfw3` -Lnanovg/build -Llibmcp23s17 -Llibpifacedigital -ljpeg -lpthread -lm -lnanovg -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -lGLEW -lGLU -lGL -std=c++11 `pkg-config Magick++ --libs` -lb64
+piclock:	$(PICLOCK_DEPENDS) nanovg/build/libnanovg.a
+	gcc -O4 -Wall -o piclock $(PICLOCK_DEPENDS) `pkg-config --libs glfw3` -Lnanovg/build -Llibmcp23s17 -Llibpifacedigital -ljpeg -lpthread -lm -lnanovg -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -lGLEW -lGLU -lGL -std=c++11 `pkg-config Magick++ --libs` -lb64
 
 nanovg/build/libnanovg.a: nanovg/src/nanovg.c nanovg/build/Makefile
 	$(MAKE) -C nanovg/build config=release nanovg
@@ -34,6 +34,6 @@ libpifacedigital/libpifacedigital.a:
 	$(MAKE) -C libpifacedigital
 
 clean:
-	rm -f piclockNVG piclockOVG piclockOGL $(PICLOCK_OBJECTS) $(DEPS)
+	rm -f piclock piclockNVG piclockOVG piclockOGL $(PICLOCK_OBJECTS) $(DEPS)
 
 -include $(DEPS)

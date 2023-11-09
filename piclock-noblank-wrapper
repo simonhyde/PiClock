@@ -4,4 +4,4 @@ BASEPATH="$(dirname $0)"
 
 xset s off -dpms
 
-exec "$BASEPATH/piclockNVG" "$@"
+exec "$BASEPATH/piclock" "$@"

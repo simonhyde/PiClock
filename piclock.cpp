@@ -129,7 +129,7 @@ static int hrate;
 int main(int argc, char *argv[]) {
 	po::variables_map vm;
 
-	std::string configFile = "piclock.cfg";
+	std::string configFile = "/etc/piclock.cfg";
 
 	
 	if(argc > 1)

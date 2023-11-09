@@ -68,7 +68,7 @@ To configure this to run at startup, I did the following:
 ```shell
 	sudo editor ~piclock/.bashrc
 
-	# And add a line to the end, something like: /home/pi/PiClock/piclock
+	# And add a line to the end, something like: /home/pi/PiClock/piclock-startx-wrapper
 ```
 
 3. Enable text-mode autologin using raspi-config:

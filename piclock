@@ -1,3 +1,0 @@
-#!/bin/sh
-BASEPATH="$(dirname $0)"
-exec "/usr/bin/startx" "$BASEPATH/piclockNVG_noblank" "$@"
