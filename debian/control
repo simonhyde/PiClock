@@ -1,0 +1,21 @@
+Source: piclock
+Priority: optional
+Maintainer: Simon Hyde <simon@icedrop.net>
+Rules-Requires-Root: no
+Build-Depends:
+ debhelper-compat (= 13),
+Standards-Version: 4.6.2
+Homepage: https://www.github.com/simonhyde/piclock
+#Vcs-Browser: https://salsa.debian.org/debian/piclock
+Vcs-Git: https://www.github.com/simonhyde/piclock.git
+
+Package: piclock
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ xinit,
+ x11-xserver-utils
+Description: Broadcast Studio Clock, originally designed for Raspberry Pi
+ Controllable/configurable simple broadcast studio clock, originally
+ designed for the Raspberry Pi, but runs on any GL-enabled X environment

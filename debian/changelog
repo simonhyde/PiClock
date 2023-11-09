@@ -1,0 +1,5 @@
+piclock (2.0) UNRELEASED; urgency=medium
+
+  * Initial debian package.
+
+ -- Simon Hyde <simon@icedrop.net>  Thu, 09 Nov 2023 12:49:38 +0000
