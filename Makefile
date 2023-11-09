@@ -18,7 +18,7 @@ build/nvg_main.o:	nvg_main.c
 	mkdir -p $(@D)
 	gcc -O4 -Wall $(CFLAGS) -MMD -c -o $@ $<
 
-piclock:	$(PICLOCK_DEPENDS) nanovg/build/libnanovg.a
+piclock: nanovg/build/libnanovg.a $(PICLOCK_DEPENDS)
 	gcc -O4 -Wall -o piclock $(PICLOCK_DEPENDS) `pkg-config --libs glfw3` -Lnanovg/build -Llibmcp23s17 -Llibpifacedigital -ljpeg -lpthread -lm -lnanovg -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -lGLEW -lGLU -lGL -std=c++11 `pkg-config Magick++ --libs` -lb64
 
 nanovg/build/libnanovg.a: nanovg/src/nanovg.c nanovg/build/Makefile
@@ -36,11 +36,16 @@ libpifacedigital/libpifacedigital.a:
 clean:
 	rm -f piclock piclockNVG piclockOVG piclockOGL $(PICLOCK_OBJECTS) $(DEPS)
 
+distclean: clean
+	make -C libmcp23s17 distclean
+	make -C libpifacedigital distclean
+	cd nanovg && premake4 clean
+
 ifeq ($(PREFIX),)
 PREFIX := /usr
 endif
 
-install:
+install: all
 	install -d $(DESTDIR)$(PREFIX)/bin/
 	install -m 755 piclock $(DESTDIR)$(PREFIX)/bin/
 	install -m 755 piclock-noblank-wrapper $(DESTDIR)$(PREFIX)/bin/

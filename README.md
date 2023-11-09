@@ -23,7 +23,7 @@ Build
 1. First you'll need to install some dependencies (ntpdate is only suggested for runtime):
 
 ```shell
-	sudo apt-get install libjpeg-dev libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev freeglut3-dev libglew-dev cmake x11-xserver-utils xinit ntp ntpdate libglfw3-dev premake4
+	sudo apt-get install libjpeg-dev libboost-program-options-dev libboost-system-dev libssl-dev libmagick++-dev libb64-dev freeglut3-dev libglew-dev x11-xserver-utils xinit ntp ntpdate libglfw3-dev premake4
 ```
 
 2. Change to the directory you checked the code out into; probably:

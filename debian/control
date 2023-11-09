@@ -4,6 +4,9 @@ Maintainer: Simon Hyde <simon@icedrop.net>
 Rules-Requires-Root: no
 Build-Depends:
  debhelper-compat (= 13),
+ libjpeg-dev, libboost-program-options-dev, libboost-system-dev,
+ libssl-dev, libmagick++-dev, libb64-dev, freeglut3-dev, libglew-dev,
+ libglfw3-dev, premake4
 Standards-Version: 4.6.2
 Homepage: https://www.github.com/simonhyde/piclock
 #Vcs-Browser: https://salsa.debian.org/debian/piclock
