@@ -36,4 +36,16 @@ libpifacedigital/libpifacedigital.a:
 clean:
 	rm -f piclock piclockNVG piclockOVG piclockOGL $(PICLOCK_OBJECTS) $(DEPS)
 
+ifeq ($(PREFIX),)
+PREFIX := /usr
+endif
+
+install:
+	install -d $(DESTDIR)$(PREFIX)/bin/
+	install -m 755 piclock $(DESTDIR)$(PREFIX)/bin/
+	install -m 755 piclock-noblank-wrapper $(DESTDIR)$(PREFIX)/bin/
+	install -m 755 piclock-startx-wrapper $(DESTDIR)$(PREFIX)/bin/
+	install -d $(DESTDIR)/etc/
+	install -m 644 piclock.cfg $(DESTDIR)/etc/
+
 -include $(DEPS)
