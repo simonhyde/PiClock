@@ -49,9 +49,16 @@ int handle_tcp_message(const std::string &message, client & conn)
 	return 1;
 }
 
-void tcp_thread(const std::string remote_host, bool * pbComms)
+void tcp_thread(std::string remote_host, bool * pbComms)
 {
 	int retryDelay = 0;
+	std::string service = TALLY_SERVICE;
+	auto colon_index = remote_host.find(':');
+	if(colon_index != std::string::npos)
+	{
+		service = remote_host.substr(colon_index + 1);
+		remote_host = remote_host.substr(0, colon_index);
+	}
 	while(bRunning)
 	{
 		try
@@ -59,7 +66,7 @@ void tcp_thread(const std::string remote_host, bool * pbComms)
 			*pbComms = false;
 			client conn;
 			//Allow 30 seconds for connection
-			conn.connect(remote_host, TALLY_SERVICE,
+			conn.connect(remote_host, service,
 				boost::posix_time::time_duration(0,0,30,0));
 			while(bRunning)
 			{
