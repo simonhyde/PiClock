@@ -8,15 +8,7 @@
 // file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 //
 
-#include <boost/asio/buffer.hpp>
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/read_until.hpp>
-#include <boost/asio/steady_timer.hpp>
-#include <boost/asio/write.hpp>
-#include <functional>
-#include <iostream>
-#include <string>
+#include "async_tcp_client.h"
 
 using boost::asio::steady_timer;
 using boost::asio::ip::tcp;
@@ -83,10 +75,7 @@ using std::placeholders::_2;
 // newline character) every 10 seconds. In this example, no deadline is applied
 // to message sending.
 //
-class client
-{
-public:
-  client(boost::asio::io_context& io_context)
+  client::client(boost::asio::io_context& io_context)
     : socket_(io_context),
       deadline_(io_context),
       heartbeat_timer_(io_context)
@@ -95,7 +84,7 @@ public:
 
   // Called by the user of the client class to initiate the connection process.
   // The endpoints will have been obtained using a tcp::resolver.
-  void start(tcp::resolver::results_type endpoints)
+  void client::start(tcp::resolver::results_type endpoints)
   {
     // Start the connect actor.
     endpoints_ = endpoints;
@@ -110,7 +99,7 @@ public:
   // This function terminates all the actors to shut down the connection. It
   // may be called by the user of the client class, or by the class itself in
   // response to graceful termination or an unrecoverable error.
-  void stop()
+  void client::stop()
   {
     stopped_ = true;
     boost::system::error_code ignored_error;
@@ -119,8 +108,7 @@ public:
     heartbeat_timer_.cancel();
   }
 
-private:
-  void start_connect(tcp::resolver::results_type::iterator endpoint_iter)
+  void client::start_connect(tcp::resolver::results_type::iterator endpoint_iter)
   {
     if (endpoint_iter != endpoints_.end())
     {
@@ -141,7 +129,7 @@ private:
     }
   }
 
-  void handle_connect(const boost::system::error_code& error,
+  void client::handle_connect(const boost::system::error_code& error,
       tcp::resolver::results_type::iterator endpoint_iter)
   {
     if (stopped_)
@@ -184,7 +172,7 @@ private:
     }
   }
 
-  void start_read()
+  void client::start_read()
   {
     // Set a deadline for the read operation.
     deadline_.expires_after(std::chrono::seconds(30));
@@ -195,7 +183,7 @@ private:
         std::bind(&client::handle_read, this, _1, _2));
   }
 
-  void handle_read(const boost::system::error_code& error, std::size_t n)
+  void client::handle_read(const boost::system::error_code& error, std::size_t n)
   {
     if (stopped_)
       return;
@@ -222,7 +210,7 @@ private:
     }
   }
 
-  void start_write()
+  void client::start_write()
   {
     if (stopped_)
       return;
@@ -232,7 +220,7 @@ private:
         std::bind(&client::handle_write, this, _1));
   }
 
-  void handle_write(const boost::system::error_code& error)
+  void client::handle_write(const boost::system::error_code& error)
   {
     if (stopped_)
       return;
@@ -251,7 +239,7 @@ private:
     }
   }
 
-  void check_deadline()
+  void client::check_deadline()
   {
     if (stopped_)
       return;
@@ -275,15 +263,8 @@ private:
     deadline_.async_wait(std::bind(&client::check_deadline, this));
   }
 
-private:
-  bool stopped_ = false;
-  tcp::resolver::results_type endpoints_;
-  tcp::socket socket_;
-  std::string input_buffer_;
-  steady_timer deadline_;
-  steady_timer heartbeat_timer_;
-};
 
+#if 0
 int main(int argc, char* argv[])
 {
   try
@@ -309,3 +290,4 @@ int main(int argc, char* argv[])
 
   return 0;
 }
+#endif
