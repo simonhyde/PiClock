@@ -20,17 +20,23 @@
 #include <functional>
 #include <iostream>
 #include <string>
+#include <queue>
 
+using boost::asio::ip::tcp;
 
 class client
 {
 public:
-  client(boost::asio::io_context& io_context);
+  client(boost::asio::io_context& io_context, bool *pbComms);
   void start(tcp::resolver::results_type endpoints);
   void stop();
+  void queue_write_line(const std::string& line);
+
+  //bodge
+  int last_gpi_value = 0x1FFFF;
 
 private:
-  void start_connect(tcp::resolver::results_type::iterator endpoint_iter);
+  void start_connect(tcp::resolver::results_type::iterator endpoints_iter);
 
   void handle_connect(const boost::system::error_code& error,
       tcp::resolver::results_type::iterator endpoint_iter);
@@ -39,18 +45,26 @@ private:
 
   void handle_read(const boost::system::error_code& error, std::size_t n);
 
-  void start_write();
+  void start_write(const std::string& line);
 
   void handle_write(const boost::system::error_code& error);
 
-  void check_deadline()
+  void check_write_queue();
+
+  void check_deadline();
+
+  void check_write_deadline();
 
 private:
   bool stopped_ = false;
-  boost::asio::ip::tcp::resolver::results_type endpoints_;
-  boost::asio::ip::tcp::socket socket_;
+  tcp::resolver::results_type endpoints_;
+  tcp::socket socket_;
   std::string input_buffer_;
   boost::asio::steady_timer deadline_;
-  boost::asio::steady_timer heartbeat_timer_;
+  boost::asio::steady_timer write_deadline_;
+  std::queue<std::string> queue_tx;
+  std::mutex mutex_queue_tx;
+  bool tx_running = false;
+  bool * pbComms;
 };
 #endif

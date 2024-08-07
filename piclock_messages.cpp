@@ -166,7 +166,8 @@ ClockMsg_SetFontSizeZones::ClockMsg_SetFontSizeZones(const std::shared_ptr<int> 
 	:ClockMsg_Region(region, message)
 {
 	auto &data = *pData;
-	std::string region_prefix = "R" + std::to_string(regionIndex);
+	std::string region_prefix = std::to_string(regionIndex);
+        region_prefix = "R" + region_prefix;
 	int i = 0;
 	while(auto pRow = get_arg_p(message, ++i))
 	{

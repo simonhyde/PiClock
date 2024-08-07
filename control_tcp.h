@@ -3,4 +3,6 @@
 
 void create_tcp_threads();
 
+void update_tcp_gpis(uint16_t values);
+
 #endif

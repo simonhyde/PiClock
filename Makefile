@@ -1,5 +1,5 @@
 all: piclock
-CPP_OBJS=piclock.o blocking_tcp_client.o control_tcp.o globals.o piclock_messages.o nvg_helpers.o tally.o tallycolour.o countdownclock.o regionstate.o displaybox.o imagescaling.o overallstate.o vectorclock.o
+CPP_OBJS=piclock.o async_tcp_client.o control_tcp.o globals.o piclock_messages.o nvg_helpers.o tally.o tallycolour.o countdownclock.o regionstate.o displaybox.o imagescaling.o overallstate.o vectorclock.o gpio.o
 C_OBJS=nvg_main.o ntpstat/ntpstat.o
 PICLOCK_SRCS=$(CPP_OBJS:%.o=%.cpp) $(C_OBJS:%.o:%.c)
 PICLOCK_OBJECTS=$(CPP_OBJS:%=build/%) $(C_OBJS:%=build/%)
@@ -12,7 +12,7 @@ CFLAGS= -Inanovg/src `$(PKG_CONFIG) Magick++ --cflags` -Ilibmcp23s17/src -Ilibpi
 
 build/%.o:	%.cpp 
 	mkdir -p $(@D)
-	$(CXX) -O4 -Wall $(CFLAGS) -Wno-psabi -MMD -c -o $@ $<
+	$(CXX) -O4 -Wall $(CFLAGS) -std=c++20 -Wno-psabi -MMD -c -o $@ $<
 
 build/ntpstat/ntpstat.o: ntpstat/ntpstat.c
 	mkdir -p $(@D)

@@ -24,8 +24,6 @@
 #include <Magick++.h>
 #include <nanovg.h>
 #include "ntpstat/ntpstat.h"
-//piface digital
-#include "pifacedigital.h"
 #include "piclock_messages.h"
 #include "nvg_main.h"
 #include "blocking_tcp_client.h"
@@ -40,6 +38,7 @@
 #include "imagescaling.h"
 #include "overallstate.h"
 #include "vectorclock.h"
+#include "gpio.h"
 
 
 #define FPS 25
@@ -51,6 +50,7 @@ static OverallState globalState;
 
 
 int GPI_MODE = 0;
+int GPIO_TYPE = 0;
 int init_window_width = 0;
 int init_window_height = 0;
 std::string clean_exit_file("/tmp/piclock_clean_exit");
@@ -83,7 +83,8 @@ void read_settings(const std::string & filename,
 	desc.add_options()
 		("init_window_width", po::value<int>(&init_window_width)->default_value(0), "Initial window width, specifying 0 gives fullscreen mode")
 		("init_window_height", po::value<int>(&init_window_height)->default_value(0), "Initial window height, specifying 0 gives fullscreen mode")
-		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=PiFace Digital, 2=TCP/IP")
+		("gpio_mode", po::value<int>(&GPIO_TYPE)->default_value(0), "GPIO Type, 0=PiFace Digital, 1=Raspberry Pi (not yet implemented)")
+		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=GPI/O, 2=TCP/IP, 3=TCP/IP with GPIO status passed back to controller")
 		("tally_remote_host", po::value<std::vector<std::string>>(&tally_hosts), "Remote tally host, may be specified multiple times for multiple connections")
 		("tally_remote_port", po::value<std::string>(&TALLY_SERVICE)->default_value("6254"), "Port (or service) to connect to on (default 6254)")
 		("tally_shared_secret", po::value<std::string>(&TALLY_SECRET)->default_value("SharedSecretGoesHere"), "Shared Secret (password) for connecting to tally service")
@@ -152,9 +153,9 @@ int main(int argc, char *argv[]) {
 	struct sched_param resize_param;
 	resize_param.sched_priority = sched_get_priority_min(SCHED_IDLE);
 	pthread_setschedparam(resize_thread.native_handle(), SCHED_IDLE, &resize_param);
-	if(GPI_MODE == 1)
-		pifacedigital_open(0);
-	else if(GPI_MODE == 2)
+	if(GPI_MODE & 1)
+                gpio_init(GPIO_TYPE);
+	else if(GPI_MODE & 2)
 		create_tcp_threads();
 
 	nvg_main(DrawFrame, init_window_width, init_window_height);
@@ -281,12 +282,12 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 		if(GPI_MODE == 1)
 		{
+			uint16_t gpis = read_gpio(GPIO_TYPE);
 			if(pRS->TD.nRows != 2)
 				bRecalcTextsNext = true;
 			pRS->TD.nRows = 2;
 			pRS->TD.nCols_default = 1;
 			pRS->TD.nCols.clear();
-			uint8_t gpis = pifacedigital_read_reg(INPUT,0);
 			uint8_t colour_weight = (gpis & 1) ? 50:255;
 			uint8_t fill_weight = (gpis & 1)? 50:255;
 			pRS->TD.displays[0][0] = std::make_shared<SimpleTallyState>(
@@ -300,6 +301,10 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 				    TallyColour(colour_weight,0,0),
 				    "On Air");
 		}
+                else if(GPI_MODE == 3)
+                {
+			update_tcp_gpis(read_gpio(GPIO_TYPE));
+                }
 
 		if(pRS->HasStatusBox())
 		{

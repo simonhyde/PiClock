@@ -3,20 +3,23 @@
 #include <thread>
 #include <mutex>
 #include <openssl/sha.h>
-#include "blocking_tcp_client.h"
+#include "async_tcp_client.h"
 #include "globals.h"
 #include "control_tcp.h"
 #include "piclock_messages.h"
 
 
+static std::shared_ptr<std::vector<std::atomic<std::shared_ptr<client>>>> conns;
+static volatile int lastGpioValue = 0x1FFFF;
 
-int handle_tcp_message(const std::string &message, client & conn)
+void handle_tcp_message(const std::string &message, client & conn, bool * pbComms)
 {
 	std::string cmd = get_arg(message,0);
 	if(cmd == "PING")
 	{
-		conn.write_line("PONG", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
-		return 2;
+		conn.queue_write_line("PONG");//2 seconds should be plenty of time to transmit our reply...
+		*pbComms = true;
+                return;
 	}
 	else if(cmd == "CRYPT")
 	{
@@ -29,8 +32,12 @@ int handle_tcp_message(const std::string &message, client & conn)
 			sprintf(out_buf + i*2, "%02x", sha_buf[i]);
 		std::string to_write = std::string("AUTH:") + std::string(out_buf)
 				   + std::string(":") + mac_address;
-		conn.write_line(to_write, boost::posix_time::time_duration(0,0,10),'\r');
-		return 3;
+		conn.queue_write_line(to_write);
+                //In theory at this point we're authenticated (or it all failed and we're about to be booted out)
+                // so we can prompt the system to add the current gpio state to the tx queue for this connection
+                conn.last_gpi_value = 0x1FFFF;
+                lastGpioValue = 0x1FFFF;
+                return;
 	}
 	else
 	{
@@ -38,18 +45,42 @@ int handle_tcp_message(const std::string &message, client & conn)
 		if(parsed)
 		{
 			msgQueue.Add(parsed);
+                        conn.queue_write_line("ACK");
 		}
 		else
 		{
 			//Unknwon command, just NACK
-			conn.write_line("NACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
+			conn.queue_write_line("NACK");
 		}
 	}
-	conn.write_line("ACK", boost::posix_time::time_duration(0,0,2),'\r');//2 seconds should be plenty of time to transmit our reply...
-	return 1;
+        *pbComms = true;
 }
 
-void tcp_thread(std::string remote_host, bool * pbComms)
+void update_tcp_gpis(uint16_t values)
+{
+    if(!conns)
+        return;
+    int newval = values;
+    //Refuse to update if identical
+    if(newval == lastGpioValue)
+        return;
+    lastGpioValue = newval;
+    if(newval > 0xFFFF)
+        return;
+    std::string cmdStr = std::string("GPI:") + std::to_string(newval);
+    for(std::shared_ptr<client> conn: *conns)
+    {
+        if(!conn)
+            return;
+        if(conn->last_gpi_value != newval)
+        {
+            conn->last_gpi_value = newval;
+            conn->queue_write_line(cmdStr);
+        }
+    }
+}
+
+static void tcp_thread(std::string remote_host, bool * pbComms, int conn_index)
 {
 	int retryDelay = 0;
 	std::string service = TALLY_SERVICE;
@@ -64,31 +95,20 @@ void tcp_thread(std::string remote_host, bool * pbComms)
 		try
 		{
 			*pbComms = false;
-			client conn;
-			//Allow 30 seconds for connection
-			conn.connect(remote_host, service,
-				boost::posix_time::time_duration(0,0,30,0));
-			while(bRunning)
-			{
-				//Nothing for 5 seconds should prompt a reconnect
-				std::string data = conn.read_line(
-				boost::posix_time::time_duration(0,0,5,0),'\r');
-
-				int ret = handle_tcp_message(data, conn);
-				if(ret == 0)
-					break;
-				if(ret != 3) //Login attempt might not be good
-				{
-					retryDelay = 0;
-					*pbComms = true;
-				}
-			}
+                        boost::asio::io_context io_context;
+                        tcp::resolver reslv(io_context);
+                        std::shared_ptr<client> conn = std::make_shared<client>(io_context, pbComms);
+                        (*conns)[conn_index].store(conn);
+			conn->start(reslv.resolve(remote_host, service));
+                        io_context.run();
+                        //Retry quickly if we previously succeeded
+                        if(*pbComms)
+                            retryDelay = 0;
 		}
 		catch(...)
 		{}
 		if(retryDelay++ > 30)
 			retryDelay = 30;
-		sleep(retryDelay);
 	}
 }
 
@@ -115,9 +135,10 @@ void create_tcp_threads()
 	{
 		mac_address = "UNKNOWN";
 	}
+        conns = std::make_shared<std::vector<std::atomic<std::shared_ptr<client>>>>(tally_hosts.size());
 	for(unsigned int i = 0; i < tally_hosts.size(); i++)
 	{
-		std::thread t(tcp_thread, tally_hosts[i], &(bComms[i]));
+		std::thread t(tcp_thread, tally_hosts[i], &(bComms[i]), i);
 		t.detach();
 	}
 }
