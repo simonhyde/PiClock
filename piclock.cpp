@@ -23,10 +23,10 @@
 #include <pthread.h>
 #include <Magick++.h>
 #include <nanovg.h>
+#include <fcntl.h>
 #include "ntpstat/ntpstat.h"
 #include "piclock_messages.h"
 #include "nvg_main.h"
-#include "blocking_tcp_client.h"
 #include "globals.h"
 #include "control_tcp.h"
 #include "nvg_helpers.h"
