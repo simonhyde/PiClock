@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
 	pthread_setschedparam(resize_thread.native_handle(), SCHED_IDLE, &resize_param);
 	if(GPI_MODE & 1)
                 gpio_init(GPIO_TYPE);
-	else if(GPI_MODE & 2)
+	if(GPI_MODE & 2)
 		create_tcp_threads();
 
 	nvg_main(DrawFrame, init_window_width, init_window_height);
@@ -308,7 +308,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 		if(pRS->HasStatusBox())
 		{
-			bool bAnyComms = pRS->DrawStatusArea(vg, ntp_state_data.status, tval.tv_sec % 2, (GPI_MODE == 2)? tally_hosts.size() : 0, bComms, mac_address);
+			bool bAnyComms = pRS->DrawStatusArea(vg, ntp_state_data.status, tval.tv_sec % 2, (GPI_MODE & 2)? tally_hosts.size() : 0, bComms, mac_address);
 			if(bAnyComms)
 			{
 				tm_last_comms_good = tval.tv_sec;

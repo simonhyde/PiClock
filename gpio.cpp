@@ -8,6 +8,7 @@ void gpio_init(int gpio_type)
     {
         case 0://PiFace Digital or other MCP23S17 device
             pifacedigital_open(0);
+            break;
         default:
             std::cerr << "Unknown GPIO Mode/Type, ignoring: " << gpio_type;
     }

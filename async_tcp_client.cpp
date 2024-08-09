@@ -144,7 +144,7 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
       std::cout << "Trying " << endpoint_iter->endpoint() << "...\n";
 
       // Set a deadline for the connect operation.
-      deadline_.expires_after(std::chrono::seconds(60));
+      deadline_.expires_after(std::chrono::seconds(10));
 
       // Start the asynchronous connect operation.
       socket_.async_connect(endpoint_iter->endpoint(),
