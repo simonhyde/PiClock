@@ -1,4 +1,10 @@
-piclock (2.0) UNRELEASED; urgency=medium
+piclock (2.1) testing; urgency=medium
+
+  * Implement GPI feedback to caller
+
+ -- Simon Hyde <simon@icedrop.net>  Fri, 09 Aug 2024 11:48:29 +0100
+
+piclock (2.0) stable; urgency=medium
 
   * Initial debian package.
 
