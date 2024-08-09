@@ -141,7 +141,9 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
   {
     if (endpoint_iter != endpoints_.end())
     {
+#ifdef DEBUG
       std::cout << "Trying " << endpoint_iter->endpoint() << "...\n";
+#endif
 
       // Set a deadline for the connect operation.
       deadline_.expires_after(std::chrono::seconds(10));
@@ -169,7 +171,9 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
     // the timeout handler must have run first.
     if (!socket_.is_open())
     {
+#ifdef DEBUG
       std::cout << "Connect timed out\n";
+#endif
 
       // Try the next available endpoint.
       start_connect(++endpoint_iter);
@@ -178,7 +182,9 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
     // Check if the connect operation failed before the deadline expired.
     else if (error)
     {
+#ifndef QUIET
       std::cout << "Connect error: " << error.message() << "\n";
+#endif
 
       // We need to close the socket used in the previous connection attempt
       // before starting a new one.
@@ -191,7 +197,9 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
     // Otherwise we have successfully established a connection.
     else
     {
+#ifdef DEBUG
       std::cout << "Connected to " << endpoint_iter->endpoint() << "\n";
+#endif
 
       // Start the input actor.
       start_read();
@@ -221,14 +229,18 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
       std::string line(input_buffer_.substr(0, n - 1));
       input_buffer_.erase(0, n);
 
+#ifdef DEBUG
       std::cout << "Received: " << line << "\n";
+#endif
       handle_tcp_message(line, *this, pbComms);
 
       start_read();
     }
     else
     {
+#ifdef DEBUG
       std::cout << "Error on receive: " << error.message() << "\n";
+#endif
 
       stop();
     }
@@ -242,7 +254,9 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
     // Write operations should take significantly less than 5 seconds...
     write_deadline_.expires_after(std::chrono::seconds(5));
 
+#ifdef DEBUG
     std::cout << "Writing: " << line << "\n";
+#endif
     // Start an asynchronous operation to send a message.
     boost::asio::async_write(socket_, boost::asio::buffer(line + "\r"),
         std::bind(&client::handle_write, this, _1));
@@ -261,7 +275,9 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
     }
     else
     {
+#ifndef QUIET
       std::cout << "Error on transmit: " << error.message() << "\n";
+#endif
 
       stop();
     }
