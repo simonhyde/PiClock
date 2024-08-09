@@ -99,6 +99,7 @@ static void tcp_thread(std::string remote_host, bool * pbComms, int conn_index)
                         tcp::resolver reslv(io_context);
                         std::shared_ptr<client> conn = std::make_shared<client>(io_context, pbComms);
                         (*conns)[conn_index].store(conn);
+                        sleep(retryDelay);
 			conn->start(reslv.resolve(remote_host, service));
                         io_context.run();
                         //Retry quickly if we previously succeeded
@@ -107,8 +108,11 @@ static void tcp_thread(std::string remote_host, bool * pbComms, int conn_index)
 		}
 		catch(...)
 		{}
-		if(retryDelay++ > 30)
-			retryDelay = 30;
+		if(retryDelay < 15)
+                {
+                    int maxIncr = std::max(2, retryDelay + 1);
+                    retryDelay += std::rand() / (RAND_MAX/maxIncr);
+                }
 	}
 }
 
