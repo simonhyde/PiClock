@@ -27,13 +27,15 @@ using boost::asio::ip::tcp;
 class client
 {
 public:
-  client(boost::asio::io_context& io_context, bool *pbComms);
+  client(bool *pbComms);
   void start(tcp::resolver::results_type endpoints);
   void stop();
   void queue_write_line(const std::string& line);
 
   //bodge
   int last_gpi_value = 0x1FFFF;
+
+  boost::asio::io_context & get_io_context();
 
 private:
   void start_connect(tcp::resolver::results_type::iterator endpoints_iter);
@@ -56,6 +58,7 @@ private:
   void check_write_deadline();
 
 private:
+  boost::asio::io_context io_context_;
   bool stopped_ = false;
   tcp::resolver::results_type endpoints_;
   tcp::socket socket_;

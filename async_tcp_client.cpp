@@ -78,10 +78,11 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
 // newline character) every 10 seconds. In this example, no deadline is applied
 // to message sending.
 //
-  client::client(boost::asio::io_context& io_context, bool *_pbComms)
-    : socket_(io_context),
-      deadline_(io_context),
-      write_deadline_(io_context),
+  client::client(bool *_pbComms)
+    : io_context_(),
+      socket_(io_context_),
+      deadline_(io_context_),
+      write_deadline_(io_context_),
       pbComms(_pbComms)
   {
   }
@@ -107,6 +108,11 @@ void handle_tcp_message(const std::string &message, client &conn, bool *pbComms)
     std::lock_guard<std::mutex> lg(mutex_queue_tx);
     queue_tx.push(line);
     boost::asio::post(socket_.get_executor(), std::bind(&client::check_write_queue,this));
+  }
+
+  boost::asio::io_context & client::get_io_context()
+  {
+    return io_context_;
   }
 
   void client::check_write_queue()

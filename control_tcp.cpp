@@ -95,13 +95,12 @@ static void tcp_thread(std::string remote_host, bool * pbComms, int conn_index)
 		try
 		{
 			*pbComms = false;
-                        boost::asio::io_context io_context;
-                        tcp::resolver reslv(io_context);
-                        std::shared_ptr<client> conn = std::make_shared<client>(io_context, pbComms);
+                        std::shared_ptr<client> conn = std::make_shared<client>(pbComms);
+                        tcp::resolver reslv(conn->get_io_context());
                         (*conns)[conn_index].store(conn);
                         sleep(retryDelay);
 			conn->start(reslv.resolve(remote_host, service));
-                        io_context.run();
+                        conn->get_io_context().run();
                         //Retry quickly if we previously succeeded
                         if(*pbComms)
                             retryDelay = 0;

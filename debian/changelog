@@ -2,7 +2,7 @@ piclock (2.1) testing; urgency=medium
 
   * Implement GPI feedback to caller
 
- -- Simon Hyde <simon@icedrop.net>  Fri, 09 Aug 2024 11:48:29 +0100
+ -- Simon Hyde <simon@icedrop.net>  Tue, 13 Aug 2024 10:00:00 +0100
 
 piclock (2.0) stable; urgency=medium
 
