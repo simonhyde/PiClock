@@ -339,7 +339,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			pRS->DrawTallies(vg, globalState, tval);
 		}
 		//Right, now start drawing the clock if it exists in our region
-		pRS->DrawAnalogueClock(vg, tm_local, tm_utc, tval.tv_usec, globalState.FontHours());
+		pRS->DrawAnalogueClock(vg, tm_local, tm_utc, tval.tv_usec, globalState.FontHours(), globalState.Images);
 		//Translate back to the origin...
 		nvgRestore(vg);
 	}

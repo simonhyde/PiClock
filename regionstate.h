@@ -5,11 +5,22 @@
 #include <nanovg.h>
 #include "tallydisplays.h"
 #include "displaybox.h"
+#include "imagescaling.h"
 
 class RegionState;
 class OverallState;
 
 typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap;
+
+class AnalogueClockState
+{
+public:
+	int Numbers = 1;
+        bool SecondsSweep = false;
+        std::string ImageClockFace, ImageClockHours, ImageClockMinutes, ImageClockSeconds;
+	std::shared_ptr<std::map<int, VGfloat>> hours_x;
+	std::shared_ptr<std::map<int, VGfloat>> hours_y;
+};
 
 class RegionState
 {
@@ -45,13 +56,15 @@ public:
 
 	void DrawTallies(NVGcontext * vg, OverallState &global, const timeval & tval);
 
-	bool DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs, const Fontinfo & font_hours);
+	bool DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs, const Fontinfo & font_hours, ImagesMap &images);
 
 	bool DrawStatusArea(NVGcontext *vg, int ntp_state, bool bFlashPhase, unsigned int connCount, const std::map<unsigned int, bool> &connComms, const std::string &mac_addr, const Fontinfo & font);
 
 //Simple accessor methods
 	bool Rotate();
+/*
 	bool AnalogueClock(DisplayBox & dBox, bool &bLocal, std::shared_ptr<const std::map<int, VGfloat> > &hours_x, std::shared_ptr<const std::map<int, VGfloat> > &hours_y, int &numbers);
+        */
 
 	bool Date(DisplayBox & dBox, bool &bLocal, int & pointSize);
 
@@ -92,14 +105,13 @@ private:
 	bool m_bRecalcReqd;
 	bool m_bRotationReqd;
 	bool m_bStatusBox;
+        bool m_bImageClock;
 	DisplayBox m_boxAnalogue;
 	int m_statusTextSize;
 	DisplayBox m_boxStatus, m_boxUTC, m_boxLocal, m_boxDate, m_boxTallies;
 	int m_digitalPointSize;
 	int m_datePointSize;
 	int lastDayOfMonth = -1;
-	std::shared_ptr<std::map<int, VGfloat>> m_hours_x;
-	std::shared_ptr<std::map<int, VGfloat>> m_hours_y;
 	std::shared_ptr<std::vector<std::vector<std::string>>> m_size_zones;
 	std::string m_default_zone;
 
@@ -110,7 +122,7 @@ private:
 	bool m_bDate;
 	bool m_bDateLocal;
 	bool m_bLandscape;
-	int m_AnalogueNumbers;
+        AnalogueClockState m_clockState;
 	VGfloat m_x = 0.0f;
 	VGfloat m_y = 0.0f;
 	VGfloat m_width = 1.0;

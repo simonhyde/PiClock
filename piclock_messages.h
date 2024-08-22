@@ -107,7 +107,8 @@ class ClockMsg_SetLayout : public ClockMsg_Region
 public:
 	bool bAnalogueClock, bAnalogueClockLocal, bDigitalClockUTC,
 		bDigitalClockLocal, bDate, bDateLocal, bNumbersPresent,
-		bNumbersOutside;
+		bNumbersOutside, bSecondsSweep;
+        std::string sImageClockFace, sImageClockHours, sImageClockMinutes, sImageClockSeconds;
 
 	ClockMsg_SetLayout(const std::shared_ptr<int> &region, const std::string & message);
 	void Dump();

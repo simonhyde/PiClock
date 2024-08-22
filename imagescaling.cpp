@@ -12,13 +12,15 @@ ResizedImage::ResizedImage(const Magick::Geometry & geom, std::shared_ptr<Magick
 {}
 void ResizedImage::DoResize()
 {
-    static Magick::Color black = Magick::Color(0,0,0,0);
+    //This doesn't work due to namespace clashes meaning that the #define macro can't find the Quantum type.
+    //static Magick::Color transparent_black = Magick::Color(0,0,0,TransparentOpacity);
+    static Magick::Color transparent_black = Magick::Color("none");
     Magick::Image scaled(*pSource);
     scaled.flip();
     if(bQuick)
         scaled.filterType(Magick::PointFilter);
     scaled.resize(Geom);
-    scaled.extent(Geom, black, Magick::CenterGravity);
+    scaled.extent(Geom, transparent_black, Magick::CenterGravity);
     pOutput = std::make_shared<Magick::Blob>();
     scaled.write(pOutput.get(), "RGBA", 8);
 }

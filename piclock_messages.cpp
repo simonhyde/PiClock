@@ -169,8 +169,15 @@ ClockMsg_SetLayout::ClockMsg_SetLayout(const std::shared_ptr<int> &region, const
 	UPDATE_VAL(bDate,               5)
 	UPDATE_VAL(bDateLocal,          6)
 	//Skip Landscape parameter, this is now global, still transmitted by driver for legacy devices
-	UPDATE_VAL(bNumbersPresent,8);
-	UPDATE_VAL(bNumbersOutside,9);
+	UPDATE_VAL(bNumbersPresent,	8);
+	UPDATE_VAL(bNumbersOutside,	9);
+	UPDATE_VAL(bSecondsSweep,	10);
+#undef UPDATE_VAL
+#define UPDATE_VAL(val,idx) (val) = get_arg(message,(idx));
+	UPDATE_VAL(sImageClockFace,	11);
+	UPDATE_VAL(sImageClockHours,	12);
+	UPDATE_VAL(sImageClockMinutes,	13);
+	UPDATE_VAL(sImageClockSeconds,	14);
 #undef UPDATE_VAL
 }
 void ClockMsg_SetLayout::Dump()
