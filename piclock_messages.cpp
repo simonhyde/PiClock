@@ -99,6 +99,13 @@ std::shared_ptr<int> ClockMsg::ParseCmd(const std::string & message, std::string
 	}
 }
 
+
+ClockMsg_SetGPO::ClockMsg_SetGPO(const std::string & message)
+{
+	gpoIndex = get_arg_int(message,1);
+	bValue = get_arg_bool(message,2);
+}
+
 ClockMsg_ClearImages::ClockMsg_ClearImages()
 {}
 
@@ -275,6 +282,8 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 {
 	std::string cmd;
 	auto region = ClockMsg::ParseCmd(message, cmd);
+	if(cmd == "SETGPO")
+		return std::make_shared<ClockMsg_SetGPO>(message);
 	if(cmd == "CLEARIMAGES")
 		return std::make_shared<ClockMsg_ClearImages>();
 	if(cmd == "STOREIMAGE")

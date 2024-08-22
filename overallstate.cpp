@@ -1,6 +1,7 @@
 #include "overallstate.h"
 #include "countdownclock.h"
 #include "globals.h"
+#include "gpio.h"
 #include <set>
 
 bool OverallState::RotationReqd(VGfloat width, VGfloat height)
@@ -43,6 +44,13 @@ bool OverallState::HandleClockMessages(std::queue<std::shared_ptr<ClockMsg> > &m
 	{
 		auto pMsg = msgs.front();
 		msgs.pop();
+
+		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetGPO>(pMsg))
+		{
+			write_gpo(castCmd->gpoIndex, castCmd->bValue);
+			continue;
+		}
+
 		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetGlobal>(pMsg))
 		{
 			UpdateFromMessage(castCmd);

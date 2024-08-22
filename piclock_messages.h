@@ -39,6 +39,14 @@ public:
 	virtual ~ClockMsg() = default;
 };
 
+class ClockMsg_SetGPO: public ClockMsg
+{
+public:
+	int gpoIndex;
+	bool bValue;
+	ClockMsg_SetGPO(const std::string & message);
+};
+
 class ClockMsg_ClearImages : public ClockMsg
 {
 public:

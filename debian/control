@@ -17,6 +17,7 @@ Architecture: any
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
+ wiringpi,
  xinit,
  x11-xserver-utils
 Description: Broadcast Studio Clock, originally designed for Raspberry Pi

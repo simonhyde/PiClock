@@ -51,6 +51,7 @@ static OverallState globalState;
 
 int GPI_MODE = 0;
 int GPIO_TYPE = 0;
+std::string GPIO_PULLS;
 int init_window_width = 0;
 int init_window_height = 0;
 std::string clean_exit_file("/tmp/piclock_clean_exit");
@@ -84,6 +85,7 @@ void read_settings(const std::string & filename,
 		("init_window_width", po::value<int>(&init_window_width)->default_value(0), "Initial window width, specifying 0 gives fullscreen mode")
 		("init_window_height", po::value<int>(&init_window_height)->default_value(0), "Initial window height, specifying 0 gives fullscreen mode")
 		("gpio_mode", po::value<int>(&GPIO_TYPE)->default_value(0), "GPIO Type, 0=PiFace Digital, 1=Raspberry Pi (not yet implemented)")
+		("gpio_pulls", po::value<std::string>(&GPIO_PULLS)->default_value("UUUUUUUU"), "GPI Pull Up/Down/Off status")
 		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=GPI/O, 2=TCP/IP, 3=TCP/IP with GPIO status passed back to controller")
 		("tally_remote_host", po::value<std::vector<std::string>>(&tally_hosts), "Remote tally host, may be specified multiple times for multiple connections")
 		("tally_remote_port", po::value<std::string>(&TALLY_SERVICE)->default_value("6254"), "Port (or service) to connect to on (default 6254)")
@@ -154,7 +156,7 @@ int main(int argc, char *argv[]) {
 	resize_param.sched_priority = sched_get_priority_min(SCHED_IDLE);
 	pthread_setschedparam(resize_thread.native_handle(), SCHED_IDLE, &resize_param);
 	if(GPI_MODE & 1)
-                gpio_init(GPIO_TYPE);
+                gpio_init(GPIO_TYPE, GPIO_PULLS);
 	if(GPI_MODE & 2)
 		create_tcp_threads();
 
@@ -282,7 +284,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 		if(GPI_MODE == 1)
 		{
-			uint16_t gpis = read_gpio(GPIO_TYPE);
+			uint16_t gpis = read_gpi();
 			if(pRS->TD.nRows != 2)
 				bRecalcTextsNext = true;
 			pRS->TD.nRows = 2;
@@ -303,7 +305,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		}
                 else if(GPI_MODE == 3)
                 {
-			update_tcp_gpis(read_gpio(GPIO_TYPE));
+			update_tcp_gpis(read_gpi());
                 }
 
 		if(pRS->HasStatusBox())

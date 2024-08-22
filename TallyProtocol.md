@@ -74,6 +74,35 @@ Upon first receiving a connection from a Pi, a tally server must respond with an
 
   it is only sent from Client (PiClock) to Tally Server. The client must send this if and only if a PING is received from the server.
 
+### GPIO Commmands
+* **SETGPO**
+
+  This should take the format:
+
+  ``SETGPO:index:value<CR>``
+
+  instructs the remote clock to turn a GPO on or off
+
+  |Argument    |Type   |Description
+  |------------|-------|-----------
+  |index       |int    |Zero-based GPO index (from 0 to 7). GPOs follow 8 GPIs, so GPO 0 will be on wiringPi pin 8
+  |value       |bool   |Whether to turn the GPO on or off
+
+
+* **GPI**
+
+  This will take the format:
+
+  ``GPI:state<CR>``
+
+  |Argument    |Type   |Description
+  |------------|-------|-----------
+  |state       |int    |16-bit unsigned integer, with each bit representing the state of a GPI. Currently only the 8 least significant bits are used. The code only reads 8 GPIs, but the protocol supports up to 16 for future growth.
+
+  this is only sent from Client (PiClock) to Tally Server. The client sends this in an unsolicited fashion whenever it notices a GPI/O change or establishes a new connection.
+
+
+
 ### Normal Response
 * **ACK**
 

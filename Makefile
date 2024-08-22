@@ -22,7 +22,7 @@ build/nvg_main.o:	nvg_main.c
 	$(CC) -O4 -Wall $(CFLAGS) -MMD -c -o $@ $<
 
 piclock: nanovg/build/libnanovg.a $(PICLOCK_DEPENDS)
-	$(CC) -O4 -Wall -o piclock $(PICLOCK_DEPENDS) `$(PKG_CONFIG) --libs glfw3` -Lnanovg/build -Llibmcp23s17 -Llibpifacedigital -ljpeg -lpthread -lm -lnanovg -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -lGLEW -lGLU -lGL -std=c++11 `$(PKG_CONFIG) Magick++ --libs` -lb64
+	$(CC) -O4 -Wall -o piclock $(PICLOCK_DEPENDS) `$(PKG_CONFIG) --libs glfw3` -Lnanovg/build -Llibmcp23s17 -Llibpifacedigital -ljpeg -lpthread -lm -lnanovg -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -lGLEW -lGLU -lGL -std=c++11 `$(PKG_CONFIG) Magick++ --libs` -lb64 -lwiringPi
 
 nanovg/build/libnanovg.a: nanovg/src/nanovg.c nanovg/build/Makefile
 	$(MAKE) -C nanovg/build config=release nanovg
