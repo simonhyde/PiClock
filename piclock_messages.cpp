@@ -109,11 +109,18 @@ ClockMsg_SetGPO::ClockMsg_SetGPO(const std::string & message)
 ClockMsg_ClearImages::ClockMsg_ClearImages()
 {}
 
+ClockMsg_StoreFont::ClockMsg_StoreFont(const std::string & message)
+	:name(get_arg(message, 1)),
+		data(get_arg_b64(message, 2, false))
+{
+}
+
 Magick::Blob ClockMsg_StoreImage::base64_to_blob(const std::string & message, int idx)
 {
 	std::string data = get_arg_b64(message,2,false);
-	return Magick::Blob((void *)data.c_str(), data.size());
+	return Magick::Blob((void *)data.data(), data.size());
 }
+
 ClockMsg_StoreImage::ClockMsg_StoreImage(const std::string & message)
 	:name(get_arg(message, 1)),
 		pSourceBlob(std::make_shared<Magick::Blob>(base64_to_blob(message, 2))),
@@ -127,6 +134,16 @@ ClockMsg_SetGlobal::ClockMsg_SetGlobal(const std::string & message)
 {
 	bLandscape = get_arg_bool(message,1);
 	bScreenSaver = get_arg_bool(message,2);
+}
+
+ClockMsg_SetFonts::ClockMsg_SetFonts(const std::string & message)
+	:tally(get_arg(message,1)),
+	 tally_label(get_arg(message,2)),
+	 status(get_arg(message,3)),
+	 digital(get_arg(message,4)),
+	 date(get_arg(message,5)),
+	 hours(get_arg(message,6))
+{
 }
 
 ClockMsg_Region::ClockMsg_Region(const std::shared_ptr<int> &region, const std::string & message)
@@ -303,12 +320,31 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 			return std::shared_ptr<ClockMsg>();
 		}
 	}
+	if(cmd == "STOREFONT")
+	{
+		try
+		{
+			return std::make_shared<ClockMsg_StoreFont>(message);
+		}
+		catch(const std::exception &e)
+		{
+			std::cerr << "Caught exception handling STOREFONT \"" << e.what() << "\"\n";
+			return std::shared_ptr<ClockMsg>();
+		}
+		catch(...)
+		{
+			std::cerr << "Caught unknown exception handling STOREFONT\n";
+			return std::shared_ptr<ClockMsg>();
+		}
+	}
 	if(cmd == "SETGLOBAL")
 		return std::make_shared<ClockMsg_SetGlobal>(message);
 	if(cmd == "SETREGIONCOUNT")
 		return std::make_shared<ClockMsg_SetRegionCount>(message);
 	if(cmd == "SETPROFILE")
 		return std::make_shared<ClockMsg_SetProfile>(message);
+	if(cmd == "SETFONTS")
+		return std::make_shared<ClockMsg_SetFonts>(message);
 	if(cmd == "SETLOCATION")
 		return std::make_shared<ClockMsg_SetLocation>(region, message);
 	if(cmd == "SETSIZE")

@@ -188,7 +188,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	//Handle any queued messages
 	std::queue<std::shared_ptr<ClockMsg> > newMsgs;
 	msgQueue.Get(newMsgs);
-	bool bRecalcTexts = globalState.HandleClockMessages(newMsgs, tval) || bRecalcTextsNext;
+	bool bRecalcTexts = globalState.HandleClockMessages(vg, newMsgs, tval) || bRecalcTextsNext;
 	bRecalcTextsNext = false;
 	
 	bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(globalState.Regions);
@@ -227,7 +227,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		VGfloat inner_height = display_height * RS.height();
 		VGfloat inner_width = display_width * RS.width();
 
-		bRecalcTexts = RS.RecalcDimensions(vg, tm_utc, tm_local, inner_width, inner_height, display_width, display_height, region.first == 0, bDigitalClockPrefix) || bRecalcTexts;
+		bRecalcTexts = RS.RecalcDimensions(vg, globalState, tm_utc, tm_local, inner_width, inner_height, display_width, display_height, region.first == 0, bDigitalClockPrefix) || bRecalcTexts;
 	}
 	if(bRecalcTexts)
 	{
@@ -266,20 +266,20 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			std::string time_str = pRS->FormatTime(tm_local, tval.tv_usec);
 			if(bDigitalClockPrefix)
 				time_str = prefix + time_str;
-			db.TextMidBottom(vg, time_str, FONT_MONO, pointSize);
+			db.TextMidBottom(vg, time_str, globalState.FontDigital(), pointSize);
 		}
 		if(pRS->DigitalUTC(db, pointSize, prefix))
 		{
 			std::string time_str = pRS->FormatTime(tm_utc, tval.tv_usec);
 			if(bDigitalClockPrefix)
 				time_str = prefix + time_str;
-			db.TextMidBottom(vg, time_str, FONT_MONO, pointSize);
+			db.TextMidBottom(vg, time_str, globalState.FontDigital(), pointSize);
 		}
 		bool bLocal;
 		if(pRS->Date(db, bLocal, pointSize))
 		{
 			db.TextMidBottom(vg, pRS->FormatDate(bLocal? tm_local: tm_utc),
-						FONT_PROP, pointSize);
+						globalState.FontDate(), pointSize);
 		}
 
 		if(GPI_MODE == 1)
@@ -310,7 +310,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 		if(pRS->HasStatusBox())
 		{
-			bool bAnyComms = pRS->DrawStatusArea(vg, ntp_state_data.status, tval.tv_sec % 2, (GPI_MODE & 2)? tally_hosts.size() : 0, bComms, mac_address);
+			bool bAnyComms = pRS->DrawStatusArea(vg, ntp_state_data.status, tval.tv_sec % 2, (GPI_MODE & 2)? tally_hosts.size() : 0, bComms, mac_address, globalState.FontStatus());
 			if(bAnyComms)
 			{
 				tm_last_comms_good = tval.tv_sec;
@@ -330,7 +330,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			pRS->DrawTallies(vg, globalState, tval);
 		}
 		//Right, now start drawing the clock if it exists in our region
-		pRS->DrawAnalogueClock(vg, tm_local, tm_utc, tval.tv_usec);
+		pRS->DrawAnalogueClock(vg, tm_local, tm_utc, tval.tv_usec, globalState.FontHours());
 		//Translate back to the origin...
 		nvgRestore(vg);
 	}

@@ -53,6 +53,14 @@ public:
 	ClockMsg_ClearImages();
 };
 
+class ClockMsg_StoreFont : public ClockMsg
+{
+public:
+	std::string name;
+	std::string data;//Not really a string, but a store of binary data, can contain nulls and all that.
+	ClockMsg_StoreFont(const std::string & message);
+};
+
 class ClockMsg_StoreImage : public ClockMsg
 {
 public:
@@ -70,6 +78,13 @@ public:
 	bool bLandscape;
 	bool bScreenSaver;
 	ClockMsg_SetGlobal(const std::string & message);
+};
+
+class ClockMsg_SetFonts : public ClockMsg
+{
+public:
+	std::string tally, tally_label, status, digital, date, hours;
+	ClockMsg_SetFonts(const std::string & message);
 };
 
 class ClockMsg_Region : public ClockMsg

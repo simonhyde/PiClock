@@ -4,7 +4,7 @@
 #include "gpio.h"
 #include <set>
 
-bool OverallState::RotationReqd(VGfloat width, VGfloat height)
+bool OverallState::RotationReqd(VGfloat width, VGfloat height) const
 {
     if(m_bLandscape)
         return width < height;
@@ -12,18 +12,53 @@ bool OverallState::RotationReqd(VGfloat width, VGfloat height)
         return width > height;
 }
 
-bool OverallState::Landscape()
+bool OverallState::Landscape() const
 {
     return m_bLandscape;
 }
 
-bool OverallState::ScreenSaver()
+bool OverallState::ScreenSaver() const
 {
     return m_bScreenSaver;
 }
+const std::string & OverallState::FontTally() const
+{
+	return font_Tally;
+}
+const std::string & OverallState::FontTally(bool bIsDigitalClock) const
+{
+	return bIsDigitalClock? font_Digital: font_Tally;
+}
+const std::string & OverallState::FontTallyLabel() const
+{
+	return font_TallyLabel;
+}
+
+const std::string & OverallState::FontStatus() const
+{
+	return font_Status;
+}
+const std::string & OverallState::FontDigital() const
+{
+	return font_Digital;
+}
+const std::string & OverallState::FontDate() const
+{
+	return font_Date;
+}
+const std::string & OverallState::FontHours() const
+{
+	return font_Hours;
+}
+
+
 void OverallState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetGlobal> &pMsg)
 {
     UpdateFromMessage(*pMsg);
+}
+bool OverallState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetFonts> &pMsg)
+{
+    return UpdateFromMessage(*pMsg);
 }
 void OverallState::UpdateFromMessage(const ClockMsg_SetGlobal &message)
 {
@@ -31,13 +66,41 @@ void OverallState::UpdateFromMessage(const ClockMsg_SetGlobal &message)
     m_bScreenSaver = message.bScreenSaver;
 }
 
+bool OverallState::updateFont(std::string & target, const std::string & newVal, const std::string & defaultVal)
+{
+	if(newVal.size() > 0 && FontData.find(newVal) != FontData.end())
+	{
+		if(target == newVal)
+			return false;
+		target = newVal;
+		return true;
+	}
+	if(target == defaultVal)
+		return false;
+	target = defaultVal;
+	return true;
+}
+
+bool OverallState::UpdateFromMessage(const ClockMsg_SetFonts &message)
+{
+	//Use bitwise or to force full evaluation
+	bool bChanged = updateFont(font_Tally, message.tally, DEFAULT_FONT_TALLY);
+	bChanged = updateFont(font_TallyLabel, message.tally_label, font_Tally) || bChanged;
+	bChanged = updateFont(font_Status, message.status, font_Tally) || bChanged;
+	bChanged = updateFont(font_Digital, message.digital, DEFAULT_FONT_DIGITAL) || bChanged;
+	bChanged = updateFont(font_Date, message.date, DEFAULT_FONT_DATE) || bChanged;
+	bChanged = updateFont(font_Hours, message.hours, DEFAULT_FONT_HOURS) || bChanged;
+	return bChanged;
+}
+
+
 void OverallState::SetLandscape(bool bLandscape)
 {
     m_bLandscape = bLandscape;
 }
 
 
-bool OverallState::HandleClockMessages(std::queue<std::shared_ptr<ClockMsg> > &msgs, struct timeval & tvCur)
+bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_ptr<ClockMsg> > &msgs, struct timeval & tvCur)
 {
 	bool bSizeChanged = false;
 	while(!msgs.empty())
@@ -54,6 +117,11 @@ bool OverallState::HandleClockMessages(std::queue<std::shared_ptr<ClockMsg> > &m
 		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetGlobal>(pMsg))
 		{
 			UpdateFromMessage(castCmd);
+			continue;
+		}
+		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetFonts>(pMsg))
+		{
+			bSizeChanged = UpdateFromMessage(castCmd) || bSizeChanged;
 			continue;
 		}
 
@@ -94,6 +162,22 @@ bool OverallState::HandleClockMessages(std::queue<std::shared_ptr<ClockMsg> > &m
 			if(!Images[castCmd->name].IsSameSource(castCmd->pSourceBlob))
 				Images[castCmd->name] = ScalingImage(castCmd->pParsedImage, castCmd->pSourceBlob);
 		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_StoreFont>(pMsg))
+	        {
+			const auto iter = FontData.find(castCmd->name);
+			if(iter != FontData.end())
+			{
+				//There is currently no way to replace fonts
+				if(iter->second != castCmd->data)
+				{
+					std::cerr << "Attempt to update a font we already have, there isn't currently a mechanism to preplace fonts";
+				}
+				continue;
+			}
+			FontData[castCmd->name] = castCmd->data;
+			auto & data = FontData[castCmd->name];
+			nvgCreateFontMem(vg, castCmd->name.c_str(), (unsigned char *)data.data(), data.size(), 0);
+	        }
 		else if(auto castCmd = std::dynamic_pointer_cast<ResizedImage>(pMsg))
 		{
 			Images[castCmd->Name].UpdateFromResize(castCmd);
@@ -141,15 +225,15 @@ bool OverallState::HandleClockMessages(std::queue<std::shared_ptr<ClockMsg> > &m
 			{
 				auto textOld = pOldState->Text(tvCur);
 				auto textNew = pNewState->Text(tvCur);
-				bool bMonoOld = pOldState->IsMonoSpaced();
-				bool bMonoNew = pNewState->IsMonoSpaced();
-				if(bMonoOld != bMonoNew)
+				bool bDigitalOld = pOldState->IsDigitalClock();
+				bool bDigitalNew = pNewState->IsDigitalClock();
+				if(bDigitalOld != bDigitalNew)
 					bSizeChanged = true;
 				else if((bool)textOld != (bool)textNew)
 					bSizeChanged = true;
 				else if(textOld && textNew)
 				{
-					if(bMonoNew)
+					if(bDigitalNew)
 					{
 						if(textOld->size() != textNew->size())
 							bSizeChanged = true;

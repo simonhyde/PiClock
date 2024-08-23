@@ -27,6 +27,7 @@
 #include "nanovg_gl_utils.h"
 //#include "perf.h"
 #include "nvg_main.h"
+#include "fonts.h"
 
 
 void errorcb(int error, const char* desc)
@@ -91,9 +92,9 @@ int nvg_main(void (*drawFrame)(NVGcontext*,int,int), int init_window_width, int 
 
 	glfwSetTime(0);
 
-	nvgCreateFont(vg, "SerifTypeface","/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
-	nvgCreateFont(vg, "SansTypeface","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-	nvgCreateFont(vg, "MonoTypeface","/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf");
+	nvgCreateFont(vg, FONT_SERIF,"/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
+	nvgCreateFont(vg, FONT_SANS,"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+	nvgCreateFont(vg, FONT_MONO,"/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf");
 
 	while (!glfwWindowShouldClose(window))
 	{

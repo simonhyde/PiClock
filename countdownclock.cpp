@@ -41,7 +41,7 @@ std::shared_ptr<std::string> CountdownClock::Label(const struct timeval &curTime
 {
 	return SimpleTallyState::Text(curTime);
 }
-bool CountdownClock::IsMonoSpaced() const
+bool CountdownClock::IsDigitalClock() const
 {
 	return true;
 }

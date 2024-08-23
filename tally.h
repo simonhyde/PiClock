@@ -13,7 +13,7 @@ public:
 	virtual std::shared_ptr<std::string> Text(const struct timeval &curTime) const = 0;
 	virtual std::shared_ptr<std::string> Label(const struct timeval &curTime) const = 0;
 	virtual std::shared_ptr<TallyState>  SetLabel(const std::string &lbl) const = 0;
-	virtual bool IsMonoSpaced() const = 0;
+	virtual bool IsDigitalClock() const = 0;
 	virtual bool Equals(std::shared_ptr<TallyState> other) const = 0;
 };
 
@@ -37,7 +37,7 @@ public:
 		return m_label;
 	}
 	std::shared_ptr<TallyState> SetLabel(const std::string & label) const override;
-	bool IsMonoSpaced() const override
+	bool IsDigitalClock() const override
 	{
 		return false;
 	}

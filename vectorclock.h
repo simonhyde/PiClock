@@ -3,5 +3,5 @@
 #include "displaybox.h"
 #include <memory>
 #include <map>
-extern void DrawVectorClock(NVGcontext *vg, DisplayBox &db, const std::shared_ptr<const std::map<int, VGfloat> > &hours_x, const std::shared_ptr<const std::map<int, VGfloat> > &hours_y, const int &numbers, const tm &tm_now, const suseconds_t &usecs);
+extern void DrawVectorClock(NVGcontext *vg, DisplayBox &db, const std::shared_ptr<const std::map<int, VGfloat> > &hours_x, const std::shared_ptr<const std::map<int, VGfloat> > &hours_y, const int &numbers, const tm &tm_now, const suseconds_t &usecs, const Fontinfo & font_hours);
 #endif

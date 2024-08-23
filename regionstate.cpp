@@ -20,7 +20,7 @@ bool RegionState::LayoutEqual(const RegionState & other) const
 		other.m_bDate                 == m_bDate                 &&
 		other.m_bDateLocal            == m_bDateLocal;
 }
-bool RegionState::RecalcDimensions(NVGcontext* vg, const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix)
+bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix)
 {
 	auto day = (m_bDateLocal? local:utc).tm_mday;
 	bool bBoxLandscape = width > height;
@@ -31,7 +31,7 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const struct tm & utc, const 
 		prev_height = height;
 		//Firstly the status text, which will always be in the bottom left corner
 		m_statusTextSize = std::min(displayWidth,displayHeight)/130.0f;
-		auto statusTextHeight = m_bStatusBox? TextHeight(vg, FONT_PROP, m_statusTextSize) : 0.0f;
+		auto statusTextHeight = m_bStatusBox? TextHeight(vg, global.FontStatus(), m_statusTextSize) : 0.0f;
 		//Start off by assuming the text is the full width, this will change if we have an analogue clock and we're in landscape
 		auto textWidth = width;
 		
@@ -77,8 +77,8 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const struct tm & utc, const 
 #endif
 			if(bDigitalClockPrefix)
 				clockStr = "TOD " + clockStr;
-			m_digitalPointSize = MaxPointSize(vg, digitalColWidth*.95f, textHeight, clockStr, FONT_MONO);
-			digitalHeight = TextHeight(vg, FONT_MONO, m_digitalPointSize)*1.1f;
+			m_digitalPointSize = MaxPointSize(vg, digitalColWidth*.95f, textHeight, clockStr, global.FontDigital());
+			digitalHeight = TextHeight(vg, global.FontDigital(), m_digitalPointSize)*1.1f;
 			DisplayBox topDigital(0, textTop + digitalHeight, digitalColWidth, digitalHeight);
 			textTop += digitalHeight;
 			if(m_bDigitalClockUTC && m_bDigitalClockLocal)
@@ -109,8 +109,8 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const struct tm & utc, const 
 		if(m_bDate)
 		{
 			auto dateStr = FormatDate(m_bDateLocal? local:utc);
-			m_datePointSize = MaxPointSize(vg, digitalColWidth*.9f, textHeight, dateStr, FONT_PROP);
-			auto dateHeight = TextHeight(vg, FONT_PROP, m_datePointSize);
+			m_datePointSize = MaxPointSize(vg, digitalColWidth*.9f, textHeight, dateStr, global.FontDate());
+			auto dateHeight = TextHeight(vg, global.FontDate(), m_datePointSize);
 			m_boxDate = DisplayBox(0, textTop + dateHeight *1.1, digitalColWidth, dateHeight*1.2);
 
 		}
@@ -153,12 +153,12 @@ void RegionState::RecalcTexts(NVGcontext *vg, OverallState &globalState, const t
 			auto iter = globalState.Images.end();
 			if(text && ((iter = globalState.Images.find(*text)) == globalState.Images.end() || !iter->second.IsValid()))
 			{
-				auto maxItemSize = MaxPointSize(vg, col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), FONT(item->IsMonoSpaced()));
+				auto maxItemSize = MaxPointSize(vg, col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), globalState.FontTally(item->IsDigitalClock()));
 				if(globalState.TextSizes[zone] == 0 || globalState.TextSizes[zone] > maxItemSize)
 					globalState.TextSizes[zone] = maxItemSize;
 				if(label)
 				{
-					auto maxLabelSize = MaxPointSize(vg, -1, row_height *.2f, label->c_str(), FONT(false));
+					auto maxLabelSize = MaxPointSize(vg, -1, row_height *.2f, label->c_str(), globalState.FontTallyLabel());
 					if(globalState.LabelSizes[zone] == 0 || globalState.LabelSizes[zone] > maxLabelSize)
 						globalState.LabelSizes[zone] = maxLabelSize;
 				}
@@ -254,11 +254,11 @@ bool RegionState::Rotate()
 {
 	return m_bRotationReqd;
 }
-bool RegionState::DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs)
+bool RegionState::DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs, const Fontinfo &font_hours)
 {
 	if(m_bAnalogueClock)
 	{
-		DrawVectorClock(vg, m_boxAnalogue, m_hours_x, m_hours_y, m_AnalogueNumbers, m_bAnalogueClockLocal? tm_local:tm_utc, usecs);
+		DrawVectorClock(vg, m_boxAnalogue, m_hours_x, m_hours_y, m_AnalogueNumbers, m_bAnalogueClockLocal? tm_local:tm_utc, usecs, font_hours);
 	}
 	return m_bAnalogueClock;
 }
@@ -404,7 +404,7 @@ void RegionState::DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, 
 		dbTally.Roundrect(vg, dbTally.h/9.8f);
 		curTally->FG(tval)->Fill(vg);
 		const auto & zone = GetZone(row,col);
-		dbTally.TextMid(vg, text, FONT(curTally->IsMonoSpaced()), global.TextSizes[zone], global.LabelSizes[zone], curTally->Label(tval));
+		dbTally.TextMid(vg, text, global.FontTally(curTally->IsDigitalClock()), global.TextSizes[zone], global.LabelSizes[zone], curTally->Label(tval), global.FontTallyLabel());
 	}
 
 }
@@ -437,42 +437,42 @@ void RegionState::DrawTallies(NVGcontext * vg, OverallState &global, const timev
 }
 
 
-bool RegionState::DrawStatusArea(NVGcontext *vg, int ntp_state, bool bFlashPhase, unsigned int connCount, const std::map<unsigned int, bool> &connComms, const std::string &mac_addr)
+bool RegionState::DrawStatusArea(NVGcontext *vg, int ntp_state, bool bFlashPhase, unsigned int connCount, const std::map<unsigned int, bool> &connComms, const std::string &mac_addr, const Fontinfo &font)
 {
 	if(!m_bStatusBox)
 		return false;
 	bool bRet = true;
 	DisplayBox db = m_boxStatus;
 	nvgSave(vg);
-	DrawNtpState(vg, db, ntp_state, bFlashPhase);
+	DrawNtpState(vg, db, ntp_state, bFlashPhase, font);
 	if(connCount > 0)
 	{
-		bRet = DrawConnComms(vg, db, connCount, connComms)? bRet : false;
+		bRet = DrawConnComms(vg, db, connCount, connComms, font)? bRet : false;
 		//Only draw MAC address/profile name if we're network-connected
-		DrawMacAddress(vg, db, mac_addr);
+		DrawMacAddress(vg, db, mac_addr, font);
 	}
 	nvgRestore(vg);
 	return bRet;
 }
 
-bool RegionState::DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int connCount, const std::map<unsigned int,bool> &connComms)
+bool RegionState::DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int connCount, const std::map<unsigned int,bool> &connComms, const Fontinfo & font)
 {
 	//Draw comms status
 	if(comms_width < 0)
 	{
 		comms_width =
-			std::max(TextWidth(vg, "Comms OK", FONT_PROP, m_statusTextSize),
+			std::max(TextWidth(vg, "Comms OK", font, m_statusTextSize),
 
-					TextWidth(vg, "Comms Failed", FONT_PROP, m_statusTextSize));
+					TextWidth(vg, "Comms Failed", font, m_statusTextSize));
 		for(unsigned int window = 0; window < connCount; window++)
 		{
 			char buf[512];
 			buf[511] = '\0';
 			snprintf(buf, 511, "Tally Server %d", window + 1);
-			comms_width = std::max(comms_width, TextWidth(vg, buf, FONT_PROP, m_statusTextSize));
+			comms_width = std::max(comms_width, TextWidth(vg, buf, font, m_statusTextSize));
 		}
 		comms_width *= 1.2f;
-		comms_text_height = TextHeight(vg, FONT_PROP, m_statusTextSize);
+		comms_text_height = TextHeight(vg, font, m_statusTextSize);
 	}
 	bool bAnyComms = false;
 	for(unsigned int window = 0; window < connCount; window++)
@@ -495,14 +495,14 @@ bool RegionState::DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int con
 		buf[511] = '\0';
 		base_x += comms_width*.5f;
 		snprintf(buf, 511, "Tally Server %d", window + 1);
-		TextMid(vg, base_x, db.y - comms_text_height*2.0f, buf, FONT_PROP, m_statusTextSize);
+		TextMid(vg, base_x, db.y - comms_text_height*2.0f, buf, font, m_statusTextSize);
 		snprintf(buf, 511, "Comms %s", bComms? "OK" : "Failed");
-		TextMid(vg, base_x, db.y - comms_text_height*0.8f, buf, FONT_PROP, m_statusTextSize);
+		TextMid(vg, base_x, db.y - comms_text_height*0.8f, buf, font, m_statusTextSize);
 	}
 	return bAnyComms;
 }
 
-void RegionState::DrawMacAddress(NVGcontext *vg, DisplayBox & db, const std::string &mac_addr)
+void RegionState::DrawMacAddress(NVGcontext *vg, DisplayBox & db, const std::string &mac_addr, const Fontinfo &font)
 {
 	nvgFillColor(vg, colMidGray);
 	char buf[8192];
@@ -511,11 +511,11 @@ void RegionState::DrawMacAddress(NVGcontext *vg, DisplayBox & db, const std::str
 		snprintf(buf, sizeof(buf) -1, "MAC Address %s", mac_addr.c_str());
 	else
 		snprintf(buf, sizeof(buf) -1, "MAC Address %s, %s", mac_addr.c_str(), TD.sProfName.c_str());
-	Text(vg, db.x, db.y, buf, FONT_PROP, m_statusTextSize);
+	Text(vg, db.x, db.y, buf, font, m_statusTextSize);
 }
 
 
-void RegionState::DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashPhase)
+void RegionState::DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashPhase, const Fontinfo & font)
 {
 	nvgFillColor(vg,colWhite);
 	const char * sync_text;
@@ -534,15 +534,15 @@ void RegionState::DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bo
 			sync_text = "Unknown Synch!";
 	}
 	const char * header_text = "NTP-Derived Clock";
-	auto statusBoxLen = std::max(TextWidth(vg, sync_text, FONT_PROP, m_statusTextSize),
-						TextWidth(vg, header_text, FONT_PROP, m_statusTextSize))*1.1f;
-	auto statusTextHeight = TextHeight(vg, FONT_PROP, m_statusTextSize);
+	auto statusBoxLen = std::max(TextWidth(vg, sync_text, font, m_statusTextSize),
+						TextWidth(vg, header_text, font, m_statusTextSize))*1.1f;
+	auto statusTextHeight = TextHeight(vg, font, m_statusTextSize);
 	//Draw a box around NTP status
 	Rect(vg, db.x + db.w - statusBoxLen, db.top_y() , statusBoxLen, db.h);
 	nvgFillColor(vg, colNtpText);
 	//2 bits of text
-	TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight *.8f, sync_text, FONT_PROP, m_statusTextSize);
-	TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight*2.f, header_text, FONT_PROP, m_statusTextSize);
+	TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight *.8f, sync_text, font, m_statusTextSize);
+	TextMid(vg, db.x + db.w - statusBoxLen*.5f, db.y - statusTextHeight*2.f, header_text, font, m_statusTextSize);
 
 	db.w -= statusBoxLen;
 }

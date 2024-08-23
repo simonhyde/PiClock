@@ -10,7 +10,7 @@ public:
 	std::shared_ptr<std::string> Text(const struct timeval &curTime) const override;
 	std::shared_ptr<TallyState> SetLabel(const std::string & label) const override;
 	std::shared_ptr<std::string> Label(const struct timeval &curTime) const override;
-	bool IsMonoSpaced() const override;
+	bool IsDigitalClock() const override;
 	bool Equals(std::shared_ptr<TallyState> other) const override;
 	CountdownClock(const std::shared_ptr<ClockMsg_SetCountdown> &pMsg);
 

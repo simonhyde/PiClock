@@ -14,9 +14,9 @@ public:
 	VGfloat top_y() const;
 	VGfloat mid_x() const;
 	VGfloat mid_y() const;
-	void TextMid(NVGcontext * vg, const std::shared_ptr<std::string> &str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>());
-	void TextMid(NVGcontext *vg, const std::string & str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>());
-	void TextMidBottom(NVGcontext *vg, const std::string & str, const Fontinfo & font, const int pointSize, std::shared_ptr<std::string> label = std::shared_ptr<std::string>());
+	void TextMid(NVGcontext * vg, const std::shared_ptr<std::string> &str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>(),  const Fontinfo & font_label = std::string());
+	void TextMid(NVGcontext *vg, const std::string & str, const Fontinfo & font, const int pointSize, int labelSize = -1, std::shared_ptr<std::string> label = std::shared_ptr<std::string>(),  const Fontinfo & font_label = std::string());
+	void TextMidBottom(NVGcontext *vg, const std::string & str, const Fontinfo & font, const int pointSize, std::shared_ptr<std::string> label = std::shared_ptr<std::string>(),  const Fontinfo & font_label = std::string());
 	void Roundrect(NVGcontext *vg, VGfloat corner);
 	void Rect(NVGcontext * vg);
 	void Zero();

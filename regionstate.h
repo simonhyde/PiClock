@@ -19,7 +19,7 @@ public:
 
 	bool LayoutEqual(std::shared_ptr<RegionState> pOther) const;
 	bool LayoutEqual(const RegionState & other) const;
-	bool RecalcDimensions(NVGcontext* vg, const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix);
+	bool RecalcDimensions(NVGcontext* vg, const OverallState & global, const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix);
 
 	void RecalcTexts(NVGcontext *vg, OverallState &globalState, const timeval &tval);
 	
@@ -45,9 +45,9 @@ public:
 
 	void DrawTallies(NVGcontext * vg, OverallState &global, const timeval & tval);
 
-	bool DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs);
+	bool DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs, const Fontinfo & font_hours);
 
-	bool DrawStatusArea(NVGcontext *vg, int ntp_state, bool bFlashPhase, unsigned int connCount, const std::map<unsigned int, bool> &connComms, const std::string &mac_addr);
+	bool DrawStatusArea(NVGcontext *vg, int ntp_state, bool bFlashPhase, unsigned int connCount, const std::map<unsigned int, bool> &connComms, const std::string &mac_addr, const Fontinfo & font);
 
 //Simple accessor methods
 	bool Rotate();
@@ -82,9 +82,9 @@ public:
 
 private:
 	void DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval);
-	void DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashState);
-	bool DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int connCount, const std::map<unsigned int,bool> &connComms);
-	void DrawMacAddress(NVGcontext *vg, DisplayBox &db, const std::string &mac_addr);
+	void DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashState, const Fontinfo & font);
+	bool DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int connCount, const std::map<unsigned int,bool> &connComms, const Fontinfo & font);
+	void DrawMacAddress(NVGcontext *vg, DisplayBox &db, const std::string &mac_addr, const Fontinfo & font);
 
 
 	bool m_bRecalcReqd;

@@ -5,7 +5,7 @@
 #define MOVE_HAND_AT	900000
 #define MOVE_HAND_AT_FLOAT  900000.0f
 
-void DrawVectorClock(NVGcontext *vg, DisplayBox &db, const std::shared_ptr<const std::map<int, VGfloat> > &hours_x, const std::shared_ptr<const std::map<int, VGfloat> > &hours_y, const int &numbers, const tm &tm_now, const suseconds_t &usecs)
+void DrawVectorClock(NVGcontext *vg, DisplayBox &db, const std::shared_ptr<const std::map<int, VGfloat> > &hours_x, const std::shared_ptr<const std::map<int, VGfloat> > &hours_y, const int &numbers, const tm &tm_now, const suseconds_t &usecs, const Fontinfo & font_hours)
 {
     VGfloat fUsecs = (VGfloat)usecs;
     //Save current NVG state so we can move back to it at the end...
@@ -25,7 +25,7 @@ void DrawVectorClock(NVGcontext *vg, DisplayBox &db, const std::shared_ptr<const
         {
             char buf[5];
             sprintf(buf, "%d", i? i:12);
-            TextMid(vg, hours_x->at(i),hours_y->at(i), buf, FONT_HOURS, db.h/15.0f);
+            TextMid(vg, hours_x->at(i),hours_y->at(i), buf, font_hours, db.h/15.0f);
         }
     }
     //Spin clock around 180 degrees because this code originally worked with Y co-ordinates increasing as you went up
