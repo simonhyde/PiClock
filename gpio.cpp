@@ -44,7 +44,7 @@ void gpio_init(int _gpio_type, const std::string & pulls)
             }
             break;
         default:
-            std::cerr << "Unknown GPIO Mode/Type, ignoring: " << gpio_type;
+            std::cerr << "Unknown GPIO Mode/Type, when initialising, ignoring: " << gpio_type << "\n";
     }
 }
 
@@ -66,7 +66,7 @@ uint16_t read_gpi()
                                            | (digitalRead(offset + 7)<<7);
 
         default:
-            std::cerr << "Unknown GPIO Mode/Type, ignoring: " << gpio_type;
+            std::cerr << "Unknown GPIO Mode/Type, when trying to read GPI, ignoring: " << gpio_type << "\n";
     }
     return 0;
 }
@@ -87,6 +87,6 @@ void write_gpo(int index, bool value)
             digitalWrite(offset + index, iValue);
             break;
         default:
-            std::cerr << "Unknown GPIO Mode/Type, ignoring: " << gpio_type;
+            std::cerr << "Unknown GPIO Mode/Type, when trying to write GPO, ignoring: " << gpio_type << "\n";
     }
 }
