@@ -80,6 +80,8 @@ public:
 
 	static bool DigitalClockPrefix(const RegionsMap &regions);
 
+	void ForceRecalc();
+
 private:
 	void DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval);
 	void DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashState, const Fontinfo & font);

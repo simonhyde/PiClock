@@ -121,7 +121,14 @@ bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_pt
 		}
 		if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetFonts>(pMsg))
 		{
-			bSizeChanged = UpdateFromMessage(castCmd) || bSizeChanged;
+			if(UpdateFromMessage(castCmd))
+			{
+				for(auto &item :Regions)
+				{
+					item.second->ForceRecalc();
+				}
+				bSizeChanged = true;
+			}
 			continue;
 		}
 
@@ -170,7 +177,7 @@ bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_pt
 				//There is currently no way to replace fonts
 				if(iter->second != castCmd->data)
 				{
-					std::cerr << "Attempt to update a font we already have, there isn't currently a mechanism to preplace fonts";
+					std::cerr << "Attempt to update a font we already have, there isn't currently a mechanism to preplace fonts\n";
 				}
 				continue;
 			}

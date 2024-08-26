@@ -7,6 +7,11 @@ RegionState::RegionState()
 : m_bRecalcReqd(true), m_bAnalogueClock(true),m_bAnalogueClockLocal(true),m_bDigitalClockUTC(false),m_bDigitalClockLocal(true),m_bDate(true), m_bDateLocal(true), m_AnalogueNumbers(1)
 {}
 
+void RegionState::ForceRecalc()
+{
+	m_bRecalcReqd = true;
+}
+
 bool RegionState::LayoutEqual(std::shared_ptr<RegionState> pOther) const
 {
 	return pOther && LayoutEqual(*pOther);
