@@ -1,5 +1,5 @@
 all: piclock
-CPP_OBJS=piclock.o async_tcp_client.o control_tcp.o globals.o piclock_messages.o nvg_helpers.o tally.o tallycolour.o countdownclock.o regionstate.o displaybox.o imagescaling.o overallstate.o vectorclock.o gpio.o
+CPP_OBJS=piclock.o async_tcp_client.o control_tcp.o globals.o piclock_messages.o nvg_helpers.o tally.o tallycolour.o countdownclock.o regionstate.o displaybox.o imagescaling.o overallstate.o analogueclock.o gpio.o
 C_OBJS=nvg_main.o ntpstat/ntpstat.o
 PICLOCK_SRCS=$(CPP_OBJS:%.o=%.cpp) $(C_OBJS:%.o:%.c)
 PICLOCK_OBJECTS=$(CPP_OBJS:%=build/%) $(C_OBJS:%=build/%)

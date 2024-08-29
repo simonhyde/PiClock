@@ -37,7 +37,7 @@
 #include "regionstate.h"
 #include "imagescaling.h"
 #include "overallstate.h"
-#include "vectorclock.h"
+#include "analogueclock.h"
 #include "gpio.h"
 
 
