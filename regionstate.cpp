@@ -267,7 +267,8 @@ bool RegionState::DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm
 {
 	if(m_bAnalogueClock)
 	{
-		::DrawAnalogueClock(vg, m_boxAnalogue, m_clockState, images, m_bAnalogueClockLocal? tm_local:tm_utc, usecs, font_hours);
+		m_clockState.font_hours = font_hours;
+		m_clockState.Draw(vg, m_boxAnalogue, images, m_bAnalogueClockLocal? tm_local:tm_utc, usecs);
 	}
 	return m_bAnalogueClock;
 }

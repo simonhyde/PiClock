@@ -6,24 +6,24 @@
 #define MOVE_HAND_AT	900000
 #define MOVE_HAND_AT_FLOAT  900000.0f
 
-static void DrawFace_Vector(NVGcontext *vg, VGfloat min_dim, const AnalogueClockState &clockState, const tm &tm_now, const Fontinfo & font_hours, VGfloat fUsecs)
+void AnalogueClockState::DrawFace_Vector(NVGcontext *vg, VGfloat min_dim, const tm &tm_now, VGfloat fUsecs)
 {
     //We'll be translated to the centre of the displaybox
 
-    if(clockState.Numbers)
+    if(Numbers)
     {
         //Write out hour labels around edge of clock
         for(int i = 0; i < 12; i++)
         {
             char buf[5];
             sprintf(buf, "%d", i? i:12);
-            TextMid(vg, clockState.hours_x->at(i),clockState.hours_y->at(i), buf, font_hours, min_dim/15.0f);
+            TextMid(vg, hours_x->at(i), hours_y->at(i), buf, font_hours, min_dim/15.0f);
         }
     }
     //Go around drawing dashes around edge of clock
     nvgStrokeWidth(vg, min_dim/100.0f);
     VGfloat start, end_short, end_long;
-    if(clockState.Numbers == 1)
+    if(Numbers == 1)
     {
         start = min_dim *7.5f/-20.0f;
         end_short = min_dim *6.7f/-20.0f;
@@ -67,7 +67,7 @@ static void DrawFace_Vector(NVGcontext *vg, VGfloat min_dim, const AnalogueClock
     }
 }
 
-static bool TryDrawImage(NVGcontext *vg, ImagesMap &images, VGfloat min_dim, const std::string &name)
+bool AnalogueClockState::TryDrawImage(NVGcontext *vg, ImagesMap &images, VGfloat min_dim, const std::string &name)
 {
     auto iter = images.end();
     int img_handle = 0;
@@ -82,22 +82,20 @@ static bool TryDrawImage(NVGcontext *vg, ImagesMap &images, VGfloat min_dim, con
     return true;
 }
 
-static void DrawFace(NVGcontext *vg, VGfloat min_dim, const AnalogueClockState &clockState, ImagesMap &images, const tm &tm_now, const Fontinfo & font_hours, VGfloat fUsecs)
+void AnalogueClockState::DrawFace(NVGcontext *vg, VGfloat min_dim, ImagesMap &images, const tm &tm_now, VGfloat fUsecs)
 {
-    if(!TryDrawImage(vg, images, min_dim, clockState.ImageClockFace))
-	DrawFace_Vector(vg, min_dim, clockState, tm_now, font_hours, fUsecs);
+    if(!TryDrawImage(vg, images, min_dim, ImageClockFace))
+	DrawFace_Vector(vg, min_dim, tm_now, fUsecs);
 }
 
 
-enum HandType { Hand_Second, Hand_Minute, Hand_Hour };
-
-static void DrawHand(NVGcontext *vg, VGfloat min_dim, const AnalogueClockState &clockState, ImagesMap &images, HandType handType)
+void AnalogueClockState::DrawHand(NVGcontext *vg, VGfloat min_dim, ImagesMap &images, HandType handType)
 {
     nvgStrokeWidth(vg, min_dim/200.0f);
     switch(handType)
     {
         case Hand_Second:
-	    if(TryDrawImage(vg, images, min_dim, clockState.ImageClockSeconds))
+	    if(TryDrawImage(vg, images, min_dim, ImageClockSeconds))
 		break;
             nvgStrokeColor(vg, colRed);
             Line(vg, 0, min_dim/10.0f,0,min_dim/-2.0f); /* second hand, with overhanging tail */
@@ -108,13 +106,13 @@ static void DrawHand(NVGcontext *vg, VGfloat min_dim, const AnalogueClockState &
 	    nvgFill(vg);
             break;
         case Hand_Minute:
-	    if(TryDrawImage(vg, images, min_dim, clockState.ImageClockMinutes))
+	    if(TryDrawImage(vg, images, min_dim, ImageClockMinutes))
 		break;
             nvgStrokeColor(vg, colWhite);
             Line(vg, 0,0,0,min_dim/-2.0f); /* minute hand */
             break;
         case Hand_Hour:
-	    if(TryDrawImage(vg, images, min_dim, clockState.ImageClockHours))
+	    if(TryDrawImage(vg, images, min_dim, ImageClockHours))
 		break;
             nvgStrokeColor(vg, colWhite);
             Line(vg, 0,0,0,min_dim/-4.0f); /* half-length hour hand */
@@ -123,7 +121,7 @@ static void DrawHand(NVGcontext *vg, VGfloat min_dim, const AnalogueClockState &
 }
 
 
-void DrawAnalogueClock(NVGcontext *vg, DisplayBox &db, const AnalogueClockState &clockState, ImagesMap &images, const tm &tm_now, const suseconds_t &usecs, const Fontinfo & font_hours)
+void AnalogueClockState::Draw(NVGcontext *vg, DisplayBox &db, ImagesMap &images, const tm &tm_now, const suseconds_t &usecs)
 {
     VGfloat fUsecs = (VGfloat)usecs;
     //Save current NVG state so we can move back to it at the end...
@@ -134,22 +132,22 @@ void DrawAnalogueClock(NVGcontext *vg, DisplayBox &db, const AnalogueClockState 
     VGfloat min_dim = std::min(db.h,db.w);
     
     nvgTranslate(vg, move_x, move_y);
-    DrawFace(vg, min_dim, clockState, images, tm_now, font_hours, fUsecs);
+    DrawFace(vg, min_dim, images, tm_now, fUsecs);
     VGfloat sec_rotation = (6.0f * tm_now.tm_sec);
     VGfloat sec_part = sec_rotation;
     //Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
     sec_part += fUsecs*6.0f/1000000.0f;
-    if(clockState.SecondsSweep)
+    if(SecondsSweep)
 	sec_rotation = sec_part;
     else if(usecs > MOVE_HAND_AT)
         sec_rotation += (fUsecs - MOVE_HAND_AT_FLOAT)*6.0f/100000.0f;
     VGfloat min_rotation = 6.0f *tm_now.tm_min + sec_part/60.0f;
     VGfloat hour_rotation = 30.0f *tm_now.tm_hour + min_rotation/12.0f;
     Rotate(vg, hour_rotation);
-    DrawHand(vg, min_dim, clockState, images, Hand_Hour);
+    DrawHand(vg, min_dim, images, Hand_Hour);
     Rotate(vg, min_rotation - hour_rotation);
-    DrawHand(vg, min_dim, clockState, images, Hand_Minute);
+    DrawHand(vg, min_dim, images, Hand_Minute);
     Rotate(vg, sec_rotation - min_rotation);
-    DrawHand(vg, min_dim, clockState, images, Hand_Second);
+    DrawHand(vg, min_dim, images, Hand_Second);
     nvgRestore(vg);
 }

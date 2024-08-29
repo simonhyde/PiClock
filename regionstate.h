@@ -6,21 +6,12 @@
 #include "tallydisplays.h"
 #include "displaybox.h"
 #include "imagescaling.h"
+#include "analogueclock.h"
 
 class RegionState;
 class OverallState;
 
 typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap;
-
-class AnalogueClockState
-{
-public:
-	int Numbers = 1;
-        bool SecondsSweep = false;
-        std::string ImageClockFace, ImageClockHours, ImageClockMinutes, ImageClockSeconds;
-	std::shared_ptr<std::map<int, VGfloat>> hours_x;
-	std::shared_ptr<std::map<int, VGfloat>> hours_y;
-};
 
 class RegionState
 {
