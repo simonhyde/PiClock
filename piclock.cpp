@@ -57,6 +57,7 @@ int init_window_height = 0;
 std::string clean_exit_file("/tmp/piclock_clean_exit");
 
 void DrawFrame(NVGcontext *vg, int iwidth, int iheight);
+void NvgInit(NVGcontext *vg);
 
 
 
@@ -160,10 +161,18 @@ int main(int argc, char *argv[]) {
 	if(GPI_MODE & 2)
 		create_tcp_threads();
 
-	nvg_main(DrawFrame, init_window_width, init_window_height);
+	nvg_main(DrawFrame, NvgInit, init_window_width, init_window_height);
 
 	//Shouldn't ever get here, but no harm in cleaning up anyway
 	cleanup();
+}
+
+void NvgInit(NVGcontext *vg)
+{
+    //Called at NVG startup before loop
+
+    //Mostly just loads default fonts
+    globalState.NvgInit(vg);
 }
 void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 {

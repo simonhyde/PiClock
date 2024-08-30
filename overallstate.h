@@ -30,6 +30,8 @@ public:
 
 	void SetLandscape(bool bLandscape);
 
+        void NvgInit(NVGcontext *vg);
+
     RegionsMap Regions;
 
     ImagesMap Images;
@@ -41,6 +43,7 @@ public:
 
 
 private:
+    void resetFonts(NVGcontext *vg, const std::string &remove_font);
     bool UpdateRegionCount(int newCount);
 	bool updateFont(std::string & target, const std::string & newVal, const std::string & defaultVal);
 	bool m_bLandscape = true;

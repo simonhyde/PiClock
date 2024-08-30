@@ -109,6 +109,9 @@ ClockMsg_SetGPO::ClockMsg_SetGPO(const std::string & message)
 ClockMsg_ClearImages::ClockMsg_ClearImages()
 {}
 
+ClockMsg_ClearFonts::ClockMsg_ClearFonts()
+{}
+
 ClockMsg_StoreFont::ClockMsg_StoreFont(const std::string & message)
 	:name(get_arg(message, 1)),
 		data(get_arg_b64(message, 2, false))
@@ -301,6 +304,8 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 	auto region = ClockMsg::ParseCmd(message, cmd);
 	if(cmd == "SETGPO")
 		return std::make_shared<ClockMsg_SetGPO>(message);
+	if(cmd == "CLEARFONTS")
+		return std::make_shared<ClockMsg_ClearFonts>();
 	if(cmd == "CLEARIMAGES")
 		return std::make_shared<ClockMsg_ClearImages>();
 	if(cmd == "STOREIMAGE")

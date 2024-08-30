@@ -44,7 +44,7 @@ static void key(GLFWwindow* window, int key, int scancode, int action, int mods)
 		glfwSetWindowShouldClose(window, GL_TRUE);
 }
 
-int nvg_main(void (*drawFrame)(NVGcontext*,int,int), int init_window_width, int init_window_height)
+int nvg_main(void (*drawFrame)(NVGcontext*,int,int), void (*nvgInit)(NVGcontext *), int init_window_width, int init_window_height)
 {
 	GLFWwindow* window;
 	NVGcontext* vg = NULL;
@@ -92,9 +92,8 @@ int nvg_main(void (*drawFrame)(NVGcontext*,int,int), int init_window_width, int 
 
 	glfwSetTime(0);
 
-	nvgCreateFont(vg, FONT_SERIF,"/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
-	nvgCreateFont(vg, FONT_SANS,"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
-	nvgCreateFont(vg, FONT_MONO,"/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf");
+        if(nvgInit != 0)
+            nvgInit(vg);
 
 	while (!glfwWindowShouldClose(window))
 	{

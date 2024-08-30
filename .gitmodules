@@ -9,4 +9,4 @@
 	url = https://github.com/piface/libmcp23s17
 [submodule "nanovg"]
 	path = nanovg
-	url = https://github.com/memononen/nanovg.git
+	url = https://github.com/simonhyde/nanovg.git

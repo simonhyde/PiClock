@@ -81,6 +81,35 @@ bool OverallState::updateFont(std::string & target, const std::string & newVal, 
 	return true;
 }
 
+void OverallState::resetFonts(NVGcontext *vg, const std::string &remove_font)
+{
+    nvgClearFonts(vg);
+    if(remove_font.size() > 0)
+    {
+	FontData.erase(remove_font);
+    }
+    else
+    {
+	FontData.clear();
+    }
+    
+    //Standard default fonts
+    nvgCreateFont(vg, FONT_SERIF,"/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf");
+    nvgCreateFont(vg, FONT_SANS,"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf");
+    nvgCreateFont(vg, FONT_MONO,"/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf");
+
+    //Fonts that weren't removed
+    for(const auto & pair : FontData)
+    {
+        nvgCreateFontMem(vg, pair.first.c_str(), (unsigned char *)pair.second.data(), pair.second.size(), 0);
+    }
+}
+
+void OverallState::NvgInit(NVGcontext *vg)
+{
+    resetFonts(vg,std::string());
+}
+
 bool OverallState::UpdateFromMessage(const ClockMsg_SetFonts &message)
 {
 	//Use bitwise or to force full evaluation
@@ -164,6 +193,10 @@ bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_pt
 		{
 			Images.clear();
 		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_ClearFonts>(pMsg))
+		{
+			resetFonts(vg, std::string());
+		}
 		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_StoreImage>(pMsg))
 		{
 			if(!Images[castCmd->name].IsSameSource(castCmd->pSourceBlob))
@@ -174,12 +207,13 @@ bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_pt
 			const auto iter = FontData.find(castCmd->name);
 			if(iter != FontData.end())
 			{
-				//There is currently no way to replace fonts
-				if(iter->second != castCmd->data)
+				//If it's identical to the font we already have, ignore it
+				if(iter->second == castCmd->data)
 				{
-					std::cerr << "Attempt to update a font we already have, there isn't currently a mechanism to preplace fonts\n";
+					continue;
 				}
-				continue;
+				//To delete the old font we have to reset all the fonts and not re-add it
+				resetFonts(vg, castCmd->name);
 			}
 			FontData[castCmd->name] = castCmd->data;
 			auto & data = FontData[castCmd->name];

@@ -150,7 +150,40 @@ Global Commands refer to the whole display area, not individual regions.
   |------------|-------|-------|-----------
   |count       |int    |1      |Number of regions
   
+* **STOREFONT**
 
+  ``STOREFONT:name:data<CR>``
+
+  Stores (or updates) a font to be used. This name can then later
+  be used by a SETFONTS command.
+
+  |Argument |Type   |Default |Description
+  |---------|-------|--------|-----------
+  |name     |string |        |Magic string which will be replaced by image
+  |data     |b64    |        |Base64 encoded binary data of a font file. TTF formatted data have been tested, but any format supported by FreeType should work.
+
+* **CLEARFONTS**
+
+  ``CLEARFONTS``
+
+  Clears any and all stored fonts.
+
+* **SETFONTS**
+
+  ``SETFONTS:tally:tallyLabel:status:digital:date:hours``
+
+  Sets which fonts to use for the various different parts of the display. Any blank strings,
+  or those pointing at font names not already stored with a STOREFONT command will result
+  in the default font being used
+
+  |Argument  |Type   |Default |Description
+  |----------|-------|--------|-----------
+  |tally     |string |Serif   |Font for tally indicators
+  |tallyLabel|string |Serif   |Font for tally labels, defaults to the font of 'tally' if unspecified
+  |status    |string |Serif   |Font for small status displays at bottom of display
+  |digital   |string |Mono    |Font for digital clock/countdowns. This must be a monospaced font (at least for the digits 0-9)
+  |date      |string |Serif   |Font for date
+  |hours     |string |SansSerif|Font for hour numbers around analogue clock
 
 ### Region-Specific Commands
 All region commands can be prefixed by a number (an int, in decimal format as a UTF-8 string), specifying the (zero-indexed) region number to which the command refers. If no region number is specified, then the command is interpreted as ``SETREGIONCOUNT:1`` followed by the command itself in Region 0.

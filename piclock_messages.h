@@ -53,6 +53,12 @@ public:
 	ClockMsg_ClearImages();
 };
 
+class ClockMsg_ClearFonts : public ClockMsg
+{
+public:
+	ClockMsg_ClearFonts();
+};
+
 class ClockMsg_StoreFont : public ClockMsg
 {
 public:
