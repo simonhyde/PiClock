@@ -275,6 +275,11 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   |blank                 |string |        |Unused legacy field, left for compatibility with old PiClock devices, can contain anything, will be ignored.
   |numbers_present       |bool   |true    |Show numbers on any analogue clock
   |numbers_outside       |bool   |true    |Show numbers outside any analogue clock (otherwise inside)
+  |seconds_sweep         |bool   |false   |Continuously sweep seconds hand instead of moving it quickly just before second changes.
+  |image_clock_face      |string |        |Image name (already stored with STOREIMAGE) to use for the clock face instead of a vector drawn clock. Centre of image must be the centre of the clockface.
+  |image_clock_hours     |string |        |Image name (already stored with STOREIMAGE) to use for the clock hand instead of a vector hand, or a colour code in the format '#000000' for the vector drawn hand. The hand must go up vertically in this image, with the centre of the image being the pivot point at the centre of the clockface.
+  |image_clock_minutes   |string |        |Image name (already stored with STOREIMAGE) to use for the clock hand instead of a vector hand, or a colour code in the format '#000000' for the vector drawn hand. The hand must go up vertically in this image, with the centre of the image being the pivot point at the centre of the clockface.
+  |image_clock_seconds   |string |        |Image name (already stored with STOREIMAGE) to use for the clock hand instead of a vector hand, or a colour code in the format '#000000' for the vector drawn hand. The hand must go up vertically in this image, with the centre of the image being the pivot point at the centre of the clockface.
 
 * **SETLOCATION**
 

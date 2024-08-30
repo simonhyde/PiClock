@@ -88,6 +88,19 @@ void AnalogueClockState::DrawFace(NVGcontext *vg, VGfloat min_dim, ImagesMap &im
 	DrawFace_Vector(vg, min_dim, tm_now, fUsecs);
 }
 
+static void handStrokeColour(NVGcontext *vg, const std::string &str, NVGcolor defCol)
+{
+    if(str.size() == 7 && str[0] == '#')
+    {
+	TallyColour col(str.substr(1));
+	col.Stroke(vg);
+    }
+    else
+    {
+	nvgStrokeColor(vg, defCol);
+    }
+}
+
 
 void AnalogueClockState::DrawHand(NVGcontext *vg, VGfloat min_dim, ImagesMap &images, HandType handType)
 {
@@ -97,7 +110,7 @@ void AnalogueClockState::DrawHand(NVGcontext *vg, VGfloat min_dim, ImagesMap &im
         case Hand_Second:
 	    if(TryDrawImage(vg, images, min_dim, ImageClockSeconds))
 		break;
-            nvgStrokeColor(vg, colRed);
+            handStrokeColour(vg, ImageClockSeconds, colRed);
             Line(vg, 0, min_dim/10.0f,0,min_dim/-2.0f); /* second hand, with overhanging tail */
 	    //Draw circle in centre
 	    nvgFillColor(vg, colRed);
@@ -108,13 +121,13 @@ void AnalogueClockState::DrawHand(NVGcontext *vg, VGfloat min_dim, ImagesMap &im
         case Hand_Minute:
 	    if(TryDrawImage(vg, images, min_dim, ImageClockMinutes))
 		break;
-            nvgStrokeColor(vg, colWhite);
+            handStrokeColour(vg, ImageClockMinutes, colWhite);
             Line(vg, 0,0,0,min_dim/-2.0f); /* minute hand */
             break;
         case Hand_Hour:
 	    if(TryDrawImage(vg, images, min_dim, ImageClockHours))
 		break;
-            nvgStrokeColor(vg, colWhite);
+            handStrokeColour(vg, ImageClockHours, colWhite);
             Line(vg, 0,0,0,min_dim/-4.0f); /* half-length hour hand */
             break;
     }
