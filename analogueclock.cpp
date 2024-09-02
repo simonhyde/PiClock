@@ -101,6 +101,19 @@ static void handStrokeColour(NVGcontext *vg, const std::string &str, NVGcolor de
     }
 }
 
+static void handFillColour(NVGcontext *vg, const std::string &str, NVGcolor defCol)
+{
+    if(str.size() == 7 && str[0] == '#')
+    {
+	TallyColour col(str.substr(1));
+	col.Fill(vg);
+    }
+    else
+    {
+	nvgFillColor(vg, defCol);
+    }
+}
+
 
 void AnalogueClockState::DrawHand(NVGcontext *vg, VGfloat min_dim, ImagesMap &images, HandType handType)
 {
@@ -113,7 +126,7 @@ void AnalogueClockState::DrawHand(NVGcontext *vg, VGfloat min_dim, ImagesMap &im
             handStrokeColour(vg, ImageClockSeconds, colRed);
             Line(vg, 0, min_dim/10.0f,0,min_dim/-2.0f); /* second hand, with overhanging tail */
 	    //Draw circle in centre
-	    nvgFillColor(vg, colRed);
+	    handFillColour(vg, ImageClockSeconds, colRed);
 	    nvgBeginPath(vg);
 	    nvgCircle(vg, 0,0,min_dim/150.0f);
 	    nvgFill(vg);
