@@ -1,3 +1,10 @@
+piclock (2.3) testing; urgency=medium
+
+  * Dynamic font changing (passed over TCP socket like images)
+  * Images for clockface/hands
+
+ -- Simon Hyde <simon@icedrop.net>  Mon, 02 Sep 2024 09:19:06 +0100
+
 piclock (2.2) testing; urgency=medium
 
   * Implement GPO directed by tally server
