@@ -34,6 +34,7 @@ std::string get_arg(const std::string & input, int index, bool bTerminated)
 	return std::string();
 }
 
+#ifndef TCP_TEST_CLIENT
 //this is probably horribly inefficient, because it gets copied multiple times, but it does work, and
 //it won't be called in our main display thread
 static std::string get_arg_b64(const std::string & input, int index, bool bTerminated = true)
@@ -394,3 +395,4 @@ bool MessageQueue::Get(std::queue<std::shared_ptr<ClockMsg> > &output)
     }
     return false;
 }
+#endif

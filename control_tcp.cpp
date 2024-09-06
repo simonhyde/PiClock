@@ -4,7 +4,14 @@
 #include <mutex>
 #include <openssl/sha.h>
 #include "async_tcp_client.h"
+#ifdef TCP_TEST_CLIENT
+#include <iostream>
+#include <time.h>
+#include <iomanip>
+#include <chrono>
+#else
 #include "globals.h"
+#endif
 #include "control_tcp.h"
 #include "piclock_messages.h"
 
@@ -12,9 +19,65 @@
 static std::shared_ptr<std::vector<std::atomic<std::shared_ptr<client>>>> conns;
 static volatile int lastGpioValue = 0x1FFFF;
 
+#ifdef TCP_TEST_CLIENT
+
+std::string TALLY_SECRET("SharedSecretGoesHere");
+std::vector<std::string> tally_hosts;
+std::map<unsigned int, bool> bComms;
+std::string mac_address;
+#define TALLY_SERVICE "6254"
+bool bRunning = true;
+
+int main(int argc, char *argv[])
+{
+	int thread_count = 10;
+	if(argc <= 0)
+	{
+		std::cerr << "Usage: " << argv[0] <<" host [threadcount]\n";
+		return 1;
+	}
+	if(argc > 2)
+	{
+		thread_count = std::atoi(argv[2]);
+	}
+	for(int i = 0; i < thread_count; i++)
+	{
+		tally_hosts.push_back(argv[1]);
+	}
+	std::cout <<"Creating threads\n";
+	create_tcp_threads();
+	std::cout <<"Created threads\n";
+	while(true)
+	{
+		sleep(1);
+		int goodcount =0;
+		for(const auto & kvp: bComms)
+		{
+			if(kvp.second)
+			{
+				goodcount++;
+			}
+		}
+		std::cout << "Good Connections: " <<goodcount << "\n";
+		std::cout.flush();
+	}
+}
+
+#endif
+
 void handle_tcp_message(const std::string &message, client & conn, bool * pbComms)
 {
 	std::string cmd = get_arg(message,0);
+#ifdef TCP_TEST_CLIENT
+	if(cmd != "PING")
+	{
+		auto now = std::chrono::system_clock::now();
+		auto asTimeT = std::chrono::system_clock::to_time_t(now);
+		auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())%1000;
+		struct tm foo;
+		std::cout << std::put_time(localtime_r(&asTimeT,&foo), "%a %b %Y %T" ) << '.' << std::setfill('0') << std::setw(3) << nowMs.count() << message << '\n';
+	}
+#endif
 	if(cmd == "PING")
 	{
 		conn.queue_write_line("PONG");//2 seconds should be plenty of time to transmit our reply...
@@ -41,17 +104,21 @@ void handle_tcp_message(const std::string &message, client & conn, bool * pbComm
 	}
 	else
 	{
+#ifndef TCP_TEST_CLIENT
 		auto parsed = ClockMsg_Parse(message);
 		if(parsed)
 		{
 			msgQueue.Add(parsed);
+#endif
                         conn.queue_write_line("ACK");
+#ifndef TCP_TEST_CLIENT
 		}
 		else
 		{
 			//Unknwon command, just NACK
 			conn.queue_write_line("NACK");
 		}
+#endif
 	}
         *pbComms = true;
 }
@@ -145,5 +212,4 @@ void create_tcp_threads()
 		t.detach();
 	}
 }
-
 
