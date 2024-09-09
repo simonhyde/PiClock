@@ -172,8 +172,21 @@ static void tcp_thread(std::string remote_host, bool * pbComms, int conn_index)
                         if(*pbComms)
                             retryDelay = 0;
 		}
+#ifdef TCP_TEST_CLIENT
+		catch(std::exception &e)
+		{
+		    std::cout << "Connection Failed: " <<e.what() << '\n';
+		}
+#endif
 		catch(...)
-		{}
+		{
+#ifdef TCP_TEST_CLIENT
+		std::cout << "Connection Failed\n";
+#endif
+		}
+#ifdef TCP_TEST_CLIENT
+		std::cout << "Restarting connection\n";
+#endif
 		if(retryDelay < 15)
                 {
                     int maxIncr = std::max(2, retryDelay + 1);
