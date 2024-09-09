@@ -1,3 +1,9 @@
+piclock (2.4) testing; urgency=medium
+
+  * Fix infinite loop bug in font sizing code
+
+ -- Simon Hyde <simon@icedrop.net>  Mon, 09 Sep 2024 15:35:47 +0100
+
 piclock (2.3) testing; urgency=medium
 
   * Dynamic font changing (passed over TCP socket like images)
