@@ -217,11 +217,13 @@ int MaxPointSize(NVGcontext *vg, float width, float height, const std::string & 
 	int cur_size = 1;
 	bool bOverflowed = false;
 	nvgFontFace(vg, f.c_str());
-	while(!bOverflowed)
+	while(!bOverflowed && cur_size > 0)//Can go <=0 by overflowing 32-bit int
 	{
 		cur_size*=2;
 		bOverflowed = CheckPointSize(vg, width, height, text, cur_size);
 	}
+        if(cur_size <= 0)
+            cur_size = 1;
 	int minSize = cur_size/2;
 	int maxSize = cur_size;
 	while(minSize < (maxSize - 1))
