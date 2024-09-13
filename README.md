@@ -109,3 +109,10 @@ Once you've got everything working, you may want to make the SD card read-only, 
 	sudo raspi-config
 	#Advanced, Overlay FS, Enable Overlay FS, and set boot filesystem to write-protected/read-only
 ```
+
+Remote Control PiClock via Tally Server
+---------------------------------------
+
+It's possible to remote control PiClock's behaviour using the [Tally Protocol](TallyProtocol.md); you can either write your own server or use one of the pre-existing implementations:
+
+* [Bitfocus Companion](https://bitfocus.io/companion) (since v3.4) has a basic implementation via the [simonhyde-piclock module](https://github.com/bitfocus/companion-module-simonhyde-piclock)
