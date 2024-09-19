@@ -15,7 +15,8 @@ uint32_t TallyColour::B() const
 	return col & 0xFF;
 }
 TallyColour::TallyColour(const std::string &input)
-	:TallyColour(std::stoul(input, NULL, 16))
+	//Support both colours with and without a leading # character
+	:TallyColour(std::stoul((input.size() > 0 && input[0] == '#')? input.substr(1) : input, NULL, 16))
 {
 }
 TallyColour::TallyColour(uint8_t r, uint8_t g, uint8_t b)

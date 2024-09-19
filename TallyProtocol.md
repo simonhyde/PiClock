@@ -26,11 +26,11 @@ Each command can take 0 or more arguments, as discussed above extra arguments wi
 
 |Type  |Format                                                           |
 |------|-----------------------------------------------------------------|
-|string|Inline UTF-8 formatted string                                    |
+|string|Inline UTF-8 formatted string, never containing CR character     |
 |int   |Decimal representation of integer in UTF-8 (or ASCII) string, precision will vary depending on command |
 |bool  |An *int* (as above) holding either 0 (for false) or 1 (for true) |
 |float |Decimal representation of a floating-point value in UTF-8 (or ASCII) string, always parsed in double precision|
-|colour|Hexadecimal representation of a 32-bit RGB in UTF-8/ASCII (basically the same format as HTML colours without the preceding #)
+|colour|Hexadecimal representation of a 32-bit RGB in UTF-8/ASCII optionally preceded by a # (basically the same format as HTML colours with or without the leading #). Older clients don't support the leading #, but new implementations should use it for consistency with the SETLAYOUT command.
 |b64   |Base64 Encoded binary data (currently only used to send images)
 
 ## Commands
@@ -159,7 +159,7 @@ Global Commands refer to the whole display area, not individual regions.
 
   |Argument |Type   |Default |Description
   |---------|-------|--------|-----------
-  |name     |string |        |Magic string which will be replaced by image
+  |name     |string |        |Magic string which will be replaced by image, mustn't contain a ':' character
   |data     |b64    |        |Base64 encoded binary data of a font file. TTF formatted data have been tested, but any format supported by FreeType should work.
 
 * **CLEARFONTS**
@@ -342,7 +342,7 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
 
   |Argument |Type   |Default |Description
   |---------|-------|--------|-----------
-  |name     |string |        |Magic string which will be replaced by image
+  |name     |string |        |Magic string which will be replaced by image, shouldn't start with a # character and mustn't contain ':'
   |image    |b64    |        |Base64 encoded binary data of an image file. JPEG and PNG formatted data have been tested, but any format supported by ImageMagick should work.
 
 * **CLEARIMAGES**

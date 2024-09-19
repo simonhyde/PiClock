@@ -92,7 +92,7 @@ static void handStrokeColour(NVGcontext *vg, const std::string &str, NVGcolor de
 {
     if(str.size() == 7 && str[0] == '#')
     {
-	TallyColour col(str.substr(1));
+	TallyColour col(str);
 	col.Stroke(vg);
     }
     else
@@ -105,7 +105,7 @@ static void handFillColour(NVGcontext *vg, const std::string &str, NVGcolor defC
 {
     if(str.size() == 7 && str[0] == '#')
     {
-	TallyColour col(str.substr(1));
+	TallyColour col(str);
 	col.Fill(vg);
     }
     else
