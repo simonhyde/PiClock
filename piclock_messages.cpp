@@ -51,17 +51,44 @@ static std::string get_arg_b64(const std::string & input, int index, bool bTermi
 
 static int get_arg_int(const std::string &input, int index, bool bTerminated = true)
 {
-	return std::stoi(get_arg(input, index, bTerminated));
+	try
+	{
+		auto arg = get_arg_p(input, index, bTerminated);
+		if(arg && arg->size() > 0)
+		    return std::stoi(*arg);
+	}
+	catch(...)
+	{
+	}
+	return 0;
 }
 
 static long get_arg_l(const std::string &input, int index, bool bTerminated = true)
 {
-	return std::stol(get_arg(input, index, bTerminated));
+	try
+	{
+		auto arg = get_arg_p(input, index, bTerminated);
+		if(arg && arg->size() > 0)
+		    return std::stol(*arg);
+	}
+	catch(...)
+	{
+	}
+	return 0;
 }
 
 static long long get_arg_ll(const std::string &input, int index, bool bTerminated = true)
 {
-	return std::stoll(get_arg(input, index, bTerminated));
+	try
+	{
+		auto arg = get_arg_p(input, index, bTerminated);
+		if(arg && arg->size() > 0)
+		    return std::stoll(*arg);
+	}
+	catch(...)
+	{
+	}
+	return 0;
 }
 
 static VGfloat get_arg_f(const std::string &input, int index, bool bTerminated = true)
