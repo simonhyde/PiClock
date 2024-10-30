@@ -8,6 +8,10 @@
 
 void AnalogueClockState::DrawFace_Vector(NVGcontext *vg, VGfloat min_dim, const tm &tm_now, VGfloat fUsecs)
 {
+    //Switch to white/white before drawing any hour text or strokes around the edge of the clock
+    nvgStrokeColor(vg, colWhite);
+    nvgFillColor(vg, colWhite);
+
     //We'll be translated to the centre of the displaybox
 
     if(Numbers)
