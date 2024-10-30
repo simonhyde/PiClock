@@ -1,3 +1,11 @@
+piclock (2.4.1) testing; urgency=medium
+
+  * Fix bug causing failure to connect to older servers
+  * Fix bug in hour number colouring on clockface
+  * Accept leading # on all "html" colour codes
+
+ -- 91-L0N366546 <simon@icedrop.net>  Wed, 30 Oct 2024 12:45:50 +0000
+
 piclock (2.4) testing; urgency=medium
 
   * Fix infinite loop bug in font sizing code
