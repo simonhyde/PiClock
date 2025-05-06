@@ -30,7 +30,7 @@ Each command can take 0 or more arguments, as discussed above extra arguments wi
 |int   |Decimal representation of integer in UTF-8 (or ASCII) string, precision will vary depending on command |
 |bool  |An *int* (as above) holding either 0 (for false) or 1 (for true) |
 |float |Decimal representation of a floating-point value in UTF-8 (or ASCII) string, always parsed in double precision|
-|colour|Hexadecimal representation of a 32-bit RGB in UTF-8/ASCII optionally preceded by a # (basically the same format as HTML colours with or without the leading #). Older clients don't support the leading #, but new implementations should use it for consistency with the SETLAYOUT command.
+|colour|Hexadecimal representation of a 24-bit RGB in UTF-8/ASCII optionally preceded by a # (basically the same format as 6-digit hexadecimal HTML colours with or without the leading #). Older clients don't support the leading #, but new implementations should use it for consistency with the SETLAYOUT command. Colours should always be formatted as 6 hexadecimal digits, for example 00FF00 or 00ff00 for 100% green.
 |b64   |Base64 Encoded binary data (currently only used to send images)
 
 ## Commands
