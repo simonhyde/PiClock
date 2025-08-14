@@ -177,7 +177,7 @@ void AnalogueClockState::Draw(NVGcontext *vg, DisplayBox &db, ImagesMap &images,
     else if(usecs > MOVE_HAND_AT)
         sec_rotation += (fUsecs - MOVE_HAND_AT_FLOAT)*6.0f/100000.0f;
     VGfloat min_rotation = 6.0f *tod.minutes().count() + sec_part/60.0f;
-    VGfloat hour_rotation = 30.0f *tod.hours().count() + min_rotation/12.0f;
+    VGfloat hour_rotation = 30.0f * (tod.hours().count() % 12) + min_rotation/12.0f;
     Rotate(vg, hour_rotation);
     DrawHand(vg, min_dim, images, Hand_Hour);
     Rotate(vg, min_rotation - hour_rotation);
