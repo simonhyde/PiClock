@@ -29,8 +29,16 @@ std::shared_ptr<std::string> CountdownClock::Text(const struct timeval &curTime)
 	char buf[256];
 	char negChar = (secs < 0)? '-': ' ';
 	secs = std::abs(secs);
-	snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld",
+	if(m_daysMode == 1 || (m_daysMode == 2 && secs > 86400))
+	{
+		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld:%02ld",
+			negChar, secs/86400, (secs/3600)%24, (secs/60)%60, secs %60);
+	}
+	else
+	{
+		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld",
 			negChar, secs/3600, (secs/60)%60, secs %60);
+	}
 	return std::make_shared<std::string>(buf);
 }
 std::shared_ptr<TallyState> CountdownClock::SetLabel(const std::string & label) const
@@ -69,14 +77,14 @@ CountdownClock::CountdownClock(const std::shared_ptr<ClockMsg_SetCountdown> &pMs
 {}
 
 CountdownClock::CountdownClock(const ClockMsg_SetCountdown &msg)
-	:CountdownClock(msg.colFg, msg.colBg, msg.sText, msg.target, msg.bHasFlashLimit? std::make_shared<long long>(msg.iFlashLimit) : std::shared_ptr<long long>())
+	:CountdownClock(msg.colFg, msg.colBg, msg.sText, msg.target, msg.bHasFlashLimit? std::make_shared<long long>(msg.iFlashLimit) : std::shared_ptr<long long>(), msg.daysMode)
 {}
 
-CountdownClock::CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const struct timeval & _target, std::shared_ptr<long long> pflash)
-	:SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash)
+CountdownClock::CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const struct timeval & _target, std::shared_ptr<long long> pflash, int daysMode)
+	:SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash), m_daysMode(daysMode)
 {}
-CountdownClock::CountdownClock(const TallyColour & fg, const TallyColour &bg, const std::string &_label, const struct timeval &_target, std::shared_ptr<long long> pflash)
-	:SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash)
+CountdownClock::CountdownClock(const TallyColour & fg, const TallyColour &bg, const std::string &_label, const struct timeval &_target, std::shared_ptr<long long> pflash, int daysMode)
+	:SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash), m_daysMode(daysMode)
 {}
 struct timeval CountdownClock::TimeLeft(const timeval & current, const timeval & target)
 {

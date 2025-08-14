@@ -47,6 +47,13 @@ SimpleTallyState::SimpleTallyState(const TallyColour & fg, const TallyColour &bg
     :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(std::make_shared<std::string>(_text))
 {}
 
+SimpleTallyState::SimpleTallyState(const TallyColour & fg, const TallyColour &bg, std::shared_ptr<std::string> _text)
+    :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(_text)
+{}
+SimpleTallyState::SimpleTallyState(const std::string &fg, const std::string &bg, std::shared_ptr<std::string> _text)
+    :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(_text)
+{}
+
 SimpleTallyState::SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old)
     :m_FG(std::make_shared<TallyColour>(fg)),m_BG(std::make_shared<TallyColour>(bg)),m_text(std::make_shared<std::string>(_text))
 {

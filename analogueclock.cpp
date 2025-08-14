@@ -6,11 +6,14 @@
 #define MOVE_HAND_AT	900000
 #define MOVE_HAND_AT_FLOAT  900000.0f
 
-void AnalogueClockState::DrawFace_Vector(NVGcontext *vg, VGfloat min_dim, const tm &tm_now, VGfloat fUsecs)
+void AnalogueClockState::DrawFace_Vector(NVGcontext *vg, VGfloat min_dim, const date::time_of_day<std::chrono::microseconds> &now)
 {
     //Switch to white/white before drawing any hour text or strokes around the edge of the clock
     nvgStrokeColor(vg, colWhite);
     nvgFillColor(vg, colWhite);
+
+    auto tm_sec = now.seconds().count();
+    VGfloat fUsecs = now.subseconds().count();
 
     //We'll be translated to the centre of the displaybox
 
@@ -52,7 +55,7 @@ void AnalogueClockState::DrawFace_Vector(NVGcontext *vg, VGfloat min_dim, const 
         Rotate(vg, 6);
 #ifndef NO_COLOUR_CHANGE
         //Fade red slowly out over first second
-        if(i == tm_now.tm_sec)
+        if(i == tm_sec)
         {
             if(i < 1)
             {
@@ -86,10 +89,10 @@ bool AnalogueClockState::TryDrawImage(NVGcontext *vg, ImagesMap &images, VGfloat
     return true;
 }
 
-void AnalogueClockState::DrawFace(NVGcontext *vg, VGfloat min_dim, ImagesMap &images, const tm &tm_now, VGfloat fUsecs)
+void AnalogueClockState::DrawFace(NVGcontext *vg, VGfloat min_dim, ImagesMap &images, const date::time_of_day<std::chrono::microseconds> & now)
 {
     if(!TryDrawImage(vg, images, min_dim, ImageClockFace))
-	DrawFace_Vector(vg, min_dim, tm_now, fUsecs);
+	DrawFace_Vector(vg, min_dim, now);
 }
 
 static void handStrokeColour(NVGcontext *vg, const std::string &str, NVGcolor defCol)
@@ -151,9 +154,11 @@ void AnalogueClockState::DrawHand(NVGcontext *vg, VGfloat min_dim, ImagesMap &im
 }
 
 
-void AnalogueClockState::Draw(NVGcontext *vg, DisplayBox &db, ImagesMap &images, const tm &tm_now, const suseconds_t &usecs)
+void AnalogueClockState::Draw(NVGcontext *vg, DisplayBox &db, ImagesMap &images, const time_info & now)
 {
-    VGfloat fUsecs = (VGfloat)usecs;
+    auto tod = date::make_time(std::chrono::floor<std::chrono::microseconds>(now).time_since_epoch());
+    int usecs = tod.subseconds().count();
+    VGfloat fUsecs = usecs;
     //Save current NVG state so we can move back to it at the end...
     nvgSave(vg);
     //Move to the centre of the clock
@@ -162,8 +167,8 @@ void AnalogueClockState::Draw(NVGcontext *vg, DisplayBox &db, ImagesMap &images,
     VGfloat min_dim = std::min(db.h,db.w);
     
     nvgTranslate(vg, move_x, move_y);
-    DrawFace(vg, min_dim, images, tm_now, fUsecs);
-    VGfloat sec_rotation = (6.0f * tm_now.tm_sec);
+    DrawFace(vg, min_dim, images, tod);
+    VGfloat sec_rotation = (6.0f * tod.seconds().count());
     VGfloat sec_part = sec_rotation;
     //Take into account microseconds when calculating position of minute hand (and to minor extent hour hand), so it doesn't jump every second
     sec_part += fUsecs*6.0f/1000000.0f;
@@ -171,8 +176,8 @@ void AnalogueClockState::Draw(NVGcontext *vg, DisplayBox &db, ImagesMap &images,
 	sec_rotation = sec_part;
     else if(usecs > MOVE_HAND_AT)
         sec_rotation += (fUsecs - MOVE_HAND_AT_FLOAT)*6.0f/100000.0f;
-    VGfloat min_rotation = 6.0f *tm_now.tm_min + sec_part/60.0f;
-    VGfloat hour_rotation = 30.0f *tm_now.tm_hour + min_rotation/12.0f;
+    VGfloat min_rotation = 6.0f *tod.minutes().count() + sec_part/60.0f;
+    VGfloat hour_rotation = 30.0f *tod.hours().count() + min_rotation/12.0f;
     Rotate(vg, hour_rotation);
     DrawHand(vg, min_dim, images, Hand_Hour);
     Rotate(vg, min_rotation - hour_rotation);

@@ -191,11 +191,11 @@ ClockMsg_SetLayout::ClockMsg_SetLayout(const std::shared_ptr<int> &region, const
 {
 #define UPDATE_VAL(val,idx) (val) = get_arg_bool(message,(idx));
 	UPDATE_VAL(bAnalogueClock,      1)
-	UPDATE_VAL(bAnalogueClockLocal, 2)
-	UPDATE_VAL(bDigitalClockUTC,    3)
-	UPDATE_VAL(bDigitalClockLocal,  4)
+	UPDATE_VAL(bLegacyAnalogueClockLocal, 2)
+	UPDATE_VAL(bLegacyDigitalClockUTC,    3)
+	UPDATE_VAL(bLegacyDigitalClockLocal,  4)
 	UPDATE_VAL(bDate,               5)
-	UPDATE_VAL(bDateLocal,          6)
+	UPDATE_VAL(bLegacyDateLocal,          6)
 	//Skip Landscape parameter, this is now global, still transmitted by driver for legacy devices
 	UPDATE_VAL(bNumbersPresent,	8);
 	UPDATE_VAL(bNumbersOutside,	9);
@@ -210,7 +210,7 @@ ClockMsg_SetLayout::ClockMsg_SetLayout(const std::shared_ptr<int> &region, const
 }
 void ClockMsg_SetLayout::Dump()
 {
-	fprintf(stderr, "Analogue %d, AnalogueLocal %d, DigitalUTC %d, DigitalLocal %d, Date %d, DateLocal %d, NumbersPresent %d, NumbersOutside %d\n", bAnalogueClock, bAnalogueClockLocal, bDigitalClockUTC, bDigitalClockLocal, bDate, bDateLocal, bNumbersPresent, bNumbersOutside);
+	fprintf(stderr, "Analogue %d, LegacyAnalogueLocal %d, LegacyDigitalUTC %d, LegacyDigitalLocal %d, Date %d, LegacyLegacyDateLocal %d, NumbersPresent %d, NumbersOutside %d\n", bAnalogueClock, bLegacyAnalogueClockLocal, bLegacyDigitalClockUTC, bLegacyDigitalClockLocal, bDate, bLegacyDateLocal, bNumbersPresent, bNumbersOutside);
 }
 
 ClockMsg_SetLocation::ClockMsg_SetLocation(const std::shared_ptr<int> &region, const std::string & message)
@@ -309,8 +309,8 @@ ClockMsg_SetIndicator::ClockMsg_SetIndicator(const std::shared_ptr<int> &region,
 	sText = get_arg(message, textIndex, false);
 }
 
-ClockMsg_SetCountdown::ClockMsg_SetCountdown(const std::shared_ptr<int> &region, const std::string & message)
-	:ClockMsg_SetIndicator(region, message, 8)
+ClockMsg_SetCountdown::ClockMsg_SetCountdown(const std::shared_ptr<int> &region, const std::string & message, bool bExtendedArguments)
+	:ClockMsg_SetIndicator(region, message, bExtendedArguments? 8 : 14)
 {
 	colFg = TallyColour(get_arg(message, 3));
 	colBg = TallyColour(get_arg(message, 4));
@@ -319,6 +319,10 @@ ClockMsg_SetCountdown::ClockMsg_SetCountdown(const std::shared_ptr<int> &region,
 	auto flash = get_arg_pll(message, 7);
 	if((bHasFlashLimit = (bool)flash))
 		iFlashLimit = *flash;
+	if(bExtendedArguments)
+	{
+		daysMode = get_arg_int(message, 8);
+	}
 }
 
 
@@ -394,7 +398,9 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 	if(cmd == "SETTALLY")
 		return std::make_shared<ClockMsg_SetTally>(region, message);
 	if(cmd == "SETCOUNTDOWN")
-		return std::make_shared<ClockMsg_SetCountdown>(region, message);
+		return std::make_shared<ClockMsg_SetCountdown>(region, message, false);
+	if(cmd == "SETCOUNTDOWNEXTENDED")
+		return std::make_shared<ClockMsg_SetCountdown>(region, message, true);
 	if(cmd == "SETLABEL")
 		return std::make_shared<ClockMsg_SetLabel>(region, message);
 	if(cmd == "SETLAYOUT")

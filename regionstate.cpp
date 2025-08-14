@@ -1,11 +1,18 @@
 #include "regionstate.h"
 #include "overallstate.h"
 #include "analogueclock.h"
+#include <algorithm>
 
 
 RegionState::RegionState()
-: m_bRecalcReqd(true), m_bAnalogueClock(true),m_bAnalogueClockLocal(true),m_bDigitalClockUTC(false),m_bDigitalClockLocal(true),m_bDate(true), m_bDateLocal(true)
-{}
+: m_bRecalcReqd(true), m_bAnalogueClock(true),m_bDate(true)
+{
+    tz_local = date::current_zone();
+    tz_utc = date::locate_zone("Etc/UTC");
+    m_AnalogueClockZone = tz_local;
+    m_DigitalClocks.push_back(ClockData(tz_local,"TOD"));
+    m_DateZone = tz_local;
+}
 
 void RegionState::ForceRecalc()
 {
@@ -19,15 +26,16 @@ bool RegionState::LayoutEqual(std::shared_ptr<RegionState> pOther) const
 bool RegionState::LayoutEqual(const RegionState & other) const
 {
 	return  other.m_bAnalogueClock        == m_bAnalogueClock &&
-		other.m_bAnalogueClockLocal   == m_bAnalogueClockLocal   &&
-		other.m_bDigitalClockUTC      == m_bDigitalClockUTC      &&
-		other.m_bDigitalClockLocal    == m_bDigitalClockLocal    &&
+		other.m_AnalogueClockZone     == m_AnalogueClockZone   &&
+		other.m_DigitalClocks         == m_DigitalClocks      &&
 		other.m_bDate                 == m_bDate                 &&
-		other.m_bDateLocal            == m_bDateLocal;
+		other.m_DateZone              == m_DateZone;
 }
-bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, const struct tm & utc, const struct tm & local, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix)
+bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, const sys_clock_data & now, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix)
 {
-	auto day = (m_bDateLocal? local:utc).tm_mday;
+	auto date_time = m_DateZone->to_local(now);
+	auto date = date::year_month_day(date::floor<date::days>(date_time));
+	int day = static_cast<unsigned>(date.day());
 	bool bBoxLandscape = width > height;
 	m_bStatusBox = bStatus;
 	if(m_bRecalcReqd || lastDayOfMonth != day || prev_width != width || prev_height != height)
@@ -74,7 +82,7 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, 
 			textTop += m_boxAnalogue.h;
 		VGfloat digitalColWidth = textWidth;
 		VGfloat digitalHeight = 0;
-		if(m_bDigitalClockUTC || m_bDigitalClockLocal)
+		if(!m_DigitalClocks.empty())
 		{
 			std::string clockStr = "99:99:99";
 #if FRAMES
@@ -84,36 +92,20 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, 
 				clockStr = "TOD " + clockStr;
 			m_digitalPointSize = MaxPointSize(vg, digitalColWidth*.95f, textHeight, clockStr, global.FontDigital());
 			digitalHeight = TextHeight(vg, global.FontDigital(), m_digitalPointSize)*1.1f;
-			DisplayBox topDigital(0, textTop + digitalHeight, digitalColWidth, digitalHeight);
-			textTop += digitalHeight;
-			if(m_bDigitalClockUTC && m_bDigitalClockLocal)
+			for(auto & digital_clock: m_DigitalClocks)
 			{
-				DisplayBox bottomDigital(0, textTop + digitalHeight, digitalColWidth, digitalHeight);
+				digital_clock.pBox = std::make_shared<DisplayBox>(0, textTop + digitalHeight, digitalColWidth, digitalHeight);
 				textTop += digitalHeight;
-				//Try to make digital clock below analogue clock the same
-				if(m_bAnalogueClockLocal)
-				{
-					m_boxLocal = topDigital;
-					m_boxUTC = bottomDigital;
-				}
-				else
-				{
-					m_boxUTC = topDigital;
-					m_boxLocal = bottomDigital;
-				}
 			}
-			else
-				m_boxUTC = m_boxLocal = topDigital;
 		}
 		else
 		{
 			m_digitalPointSize = 0;
-			m_boxUTC.Zero(); m_boxLocal.Zero();
 		}
 		//Right, digital clocks done, move onto the date
 		if(m_bDate)
 		{
-			auto dateStr = FormatDate(m_bDateLocal? local:utc);
+			auto dateStr = FormatDate(date_time);
 			m_datePointSize = MaxPointSize(vg, digitalColWidth*.9f, textHeight, dateStr, global.FontDate());
 			auto dateHeight = TextHeight(vg, global.FontDate(), m_datePointSize);
 			m_boxDate = DisplayBox(0, textTop + dateHeight *1.1, digitalColWidth, dateHeight*1.2);
@@ -179,15 +171,16 @@ void RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLayout> &p
 
 void RegionState::UpdateFromMessage(const ClockMsg_SetLayout &msg)
 {
+	bool recalcReqd = false;
 #define UPDATE_VAL(val,param) { auto newVal = msg.param; \
-				m_bRecalcReqd = m_bRecalcReqd || ((val) != newVal); \
+				recalcReqd = recalcReqd || ((val) != newVal); \
 				(val) = newVal; }
 	UPDATE_VAL(m_bAnalogueClock,      bAnalogueClock)
-	UPDATE_VAL(m_bAnalogueClockLocal, bAnalogueClockLocal)
-	UPDATE_VAL(m_bDigitalClockUTC,    bDigitalClockUTC)
-	UPDATE_VAL(m_bDigitalClockLocal,  bDigitalClockLocal)
+	UPDATE_VAL(m_bLegacyAnalogueClockLocal, bLegacyAnalogueClockLocal)
+	UPDATE_VAL(m_bLegacyDigitalClockUTC,    bLegacyDigitalClockUTC)
+	UPDATE_VAL(m_bLegacyDigitalClockLocal,  bLegacyDigitalClockLocal)
 	UPDATE_VAL(m_bDate,               bDate)
-	UPDATE_VAL(m_bDateLocal,          bDateLocal)
+	UPDATE_VAL(m_bLegacyDateLocal,          bLegacyDateLocal)
 	bool numbersPresent = m_clockState.Numbers != 0;
 	bool numbersOutside = m_clockState.Numbers != 2;
 	UPDATE_VAL(numbersPresent,	bNumbersPresent);
@@ -200,6 +193,30 @@ void RegionState::UpdateFromMessage(const ClockMsg_SetLayout &msg)
 #undef UPDATE_VAL
 	m_clockState.Numbers = numbersPresent? (numbersOutside? 1 : 2)
 						: 0;
+	m_bRecalcReqd = m_bRecalcReqd || recalcReqd;
+	if(recalcReqd && m_bLegacyClockMode)
+	{
+		m_DigitalClocks.clear();
+		if(m_bLegacyDigitalClockLocal)
+		{
+			m_DigitalClocks.push_back(ClockData(tz_local,"TOD"));
+		}
+		if(m_bLegacyDigitalClockUTC)
+		{
+			m_DigitalClocks.push_back(ClockData(tz_utc,"UTC"));
+		}
+		if(!m_bLegacyAnalogueClockLocal && m_DigitalClocks.size() > 1)
+		{
+#if 0
+			auto swap_internal = m_DigitalClocks[0];
+			m_DigitalClocks[0] = m_DigitalClocks[1];
+			m_DigitalClocks[1] = swap_internal;
+#else
+			std::swap(m_DigitalClocks[0], m_DigitalClocks[1]);
+#endif
+		}
+		m_DateZone = m_bLegacyDateLocal? tz_local: tz_utc;
+	}
 }
 
 bool RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLocation> &pMsg)
@@ -263,12 +280,12 @@ bool RegionState::Rotate()
 {
 	return m_bRotationReqd;
 }
-bool RegionState::DrawAnalogueClock(NVGcontext *vg, const tm &tm_local, const tm &tm_utc, const suseconds_t &usecs, const Fontinfo &font_hours, ImagesMap &images)
+bool RegionState::DrawAnalogueClock(NVGcontext *vg, const sys_clock_data & now, const Fontinfo &font_hours, ImagesMap &images)
 {
 	if(m_bAnalogueClock)
 	{
 		m_clockState.font_hours = font_hours;
-		m_clockState.Draw(vg, m_boxAnalogue, images, m_bAnalogueClockLocal? tm_local:tm_utc, usecs);
+		m_clockState.Draw(vg, m_boxAnalogue, images, m_AnalogueClockZone->to_local(now));
 	}
 	return m_bAnalogueClock;
 }
@@ -284,29 +301,35 @@ bool RegionState::AnalogueClock(DisplayBox & dBox, bool &bLocal, std::shared_ptr
 }
 */
 
-bool RegionState::Date(DisplayBox & dBox, bool &bLocal, int & pointSize)
+bool RegionState::DrawDate(NVGcontext *vg, const OverallState &globalState, const sys_clock_data &now)
 {
-	dBox = m_boxDate;
-	bLocal = m_bDateLocal;
-	pointSize = m_datePointSize;
-	return m_bDate;
+	if(m_bDate)
+	{
+		m_boxDate.TextMidBottom(vg, FormatDate(m_DateZone->to_local(now)), globalState.FontDate(), m_datePointSize);
+		return true;
+	}
+	return false;
 }
 
-bool RegionState::DigitalLocal(DisplayBox & dBox, int & pointSize, std::string & prefix)
+bool RegionState::DrawDigitals(NVGcontext *vg, const OverallState & globalState, bool bPrefix, const sys_clock_data & now)
 {
-	dBox = m_boxLocal;
-	pointSize = m_digitalPointSize;
-	prefix = "TOD ";
-	return m_bDigitalClockLocal;
+	bool bRet = false;
+	for(const auto & clock: m_DigitalClocks)
+	{
+		if(clock.tz && clock.pBox)
+		{
+			std::string time_str = FormatTime(clock.tz->to_local(now));
+			if(bPrefix)
+			{
+				time_str = clock.label + " " + time_str;
+			}
+			clock.pBox->TextMidBottom(vg, time_str, globalState.FontDigital(), m_digitalPointSize);
+			bRet = true;
+		}
+	}
+	return bRet;
 }
 
-bool RegionState::DigitalUTC(DisplayBox & dBox, int & pointSize, std::string & prefix)
-{
-	dBox = m_boxUTC;
-	pointSize = m_digitalPointSize;
-	prefix = "UTC ";
-	return m_bDigitalClockUTC;
-}
 
 bool RegionState::HasStatusBox()
 {
@@ -349,47 +372,47 @@ VGfloat RegionState::top_y() const
 	return y() - height();
 }
 
-bool RegionState::hasDigitalUTC() const
-{
-	return m_bDigitalClockUTC;
-}
-
-bool RegionState::hasDigitalLocal() const
-{
-	return m_bDigitalClockLocal;
-}
-
-
 bool RegionState::DigitalClockPrefix(const RegionsMap &regions)
 {
-	bool bUTC = false;
-	bool bLocal = false;
+	bool bFirst = true;
+	std::string labelFound;
 	for(const auto & kv : regions)
 	{
-		bUTC = bUTC || kv.second->hasDigitalUTC();
-		bLocal = bLocal || kv.second->hasDigitalLocal();
-		//Check on every loop so we don't necessarily have to check every region
-		if(bLocal && bUTC)
-			return true;
+		for(const auto & cd: kv.second->m_DigitalClocks)
+		{
+			if(!bFirst && labelFound != cd.label)
+			{
+			    return true;
+			}
+			bFirst = false;
+			labelFound = cd.label;
+		}
 	}
 	return false;
 }
-std::string RegionState::FormatDate(const struct tm &data)
+
+std::string RegionState::FormatDate(const sys_clock_data &time)
 {
-	char buf[512];
-	strftime(buf, sizeof(buf), "%a %d %b %Y", &data);
-	return buf;
+	return FormatDate(m_DateZone->to_local(time));
 }
 
-std::string RegionState::FormatTime(const struct tm &data, time_t usecs)
+std::string RegionState::FormatDate(const time_info &time)
 {
-	char buf[512];
+	return date::format("%a %d %b %Y", time);
+}
+
+std::string RegionState::FormatTime(const time_info &data)
+{
+	auto whole_seconds = std::chrono::floor<std::chrono::seconds>(data);
 #if FRAMES
-       sprintf(buf,"%02d:%02d:%02d:%02ld",data.tm_hour,data.tm_min,data.tm_sec,usec *FPS/1000000);
+	int frames = static_cast<int>(duration_cast<duration<double>>(now - whole_seconds).count() *FPS);
+	std::ostringstream oss;
+	date::to_stream(oss, "%T:", whole_seconds);
+	oss << std::setw(2) << std::setfill('0') << frames;
+	return oss.str();
 #else
-       sprintf(buf,"%02d:%02d:%02d",data.tm_hour,data.tm_min,data.tm_sec);
+	return date::format("%T", whole_seconds);
 #endif
-    return buf;
 }
 
 void RegionState::DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval)

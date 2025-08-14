@@ -185,9 +185,9 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 	static long prev_sec = 0;
 
-	static struct tm tm_local, tm_utc;
-
 	static bool bRecalcTextsNext = true;
+
+	auto now = std::chrono::system_clock::now();
 
 	RotateTextClipCache();
 
@@ -236,7 +236,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		VGfloat inner_height = display_height * RS.height();
 		VGfloat inner_width = display_width * RS.width();
 
-		bRecalcTexts = RS.RecalcDimensions(vg, globalState, tm_utc, tm_local, inner_width, inner_height, display_width, display_height, region.first == 0, bDigitalClockPrefix) || bRecalcTexts;
+		bRecalcTexts = RS.RecalcDimensions(vg, globalState, now, inner_width, inner_height, display_width, display_height, region.first == 0, bDigitalClockPrefix) || bRecalcTexts;
 	}
 	if(bRecalcTexts)
 	{
@@ -249,9 +249,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			RS.RecalcTexts(vg, globalState, tval);
 		}
 	}
-	gettimeofday(&tval, NULL);
-	localtime_r(&tval.tv_sec, &tm_local);
-	gmtime_r(&tval.tv_sec, &tm_utc);
+
 	for(const auto & region : globalState.Regions)
 	{
 		std::string profName;
@@ -268,28 +266,9 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 		//Write out the text
 		DisplayBox db;
-		int pointSize;
 		std::string prefix;
-		if(pRS->DigitalLocal(db, pointSize, prefix))
-		{
-			std::string time_str = pRS->FormatTime(tm_local, tval.tv_usec);
-			if(bDigitalClockPrefix)
-				time_str = prefix + time_str;
-			db.TextMidBottom(vg, time_str, globalState.FontDigital(), pointSize);
-		}
-		if(pRS->DigitalUTC(db, pointSize, prefix))
-		{
-			std::string time_str = pRS->FormatTime(tm_utc, tval.tv_usec);
-			if(bDigitalClockPrefix)
-				time_str = prefix + time_str;
-			db.TextMidBottom(vg, time_str, globalState.FontDigital(), pointSize);
-		}
-		bool bLocal;
-		if(pRS->Date(db, bLocal, pointSize))
-		{
-			db.TextMidBottom(vg, pRS->FormatDate(bLocal? tm_local: tm_utc),
-						globalState.FontDate(), pointSize);
-		}
+		pRS->DrawDigitals(vg, globalState, bDigitalClockPrefix, now);
+		pRS->DrawDate(vg, globalState, now);
 
 		if(GPI_MODE == 1)
 		{
@@ -339,7 +318,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 			pRS->DrawTallies(vg, globalState, tval);
 		}
 		//Right, now start drawing the clock if it exists in our region
-		pRS->DrawAnalogueClock(vg, tm_local, tm_utc, tval.tv_usec, globalState.FontHours(), globalState.Images);
+		pRS->DrawAnalogueClock(vg, now, globalState.FontHours(), globalState.Images);
 		//Translate back to the origin...
 		nvgRestore(vg);
 	}

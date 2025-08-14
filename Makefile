@@ -22,7 +22,7 @@ build/nvg_main.o:	nvg_main.c
 	$(CC) -O4 -Wall $(CFLAGS) -MMD -c -o $@ $<
 
 piclock: nanovg/build/libnanovg.a $(PICLOCK_DEPENDS)
-	$(CC) -O4 -Wall -o piclock $(PICLOCK_DEPENDS) `$(PKG_CONFIG) --libs glfw3` -Lnanovg/build -Llibmcp23s17 -Llibpifacedigital -ljpeg -lpthread -lm -lnanovg -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -lGLEW -lGLU -lGL -std=c++11 `$(PKG_CONFIG) Magick++ --libs` -lb64 -lwiringPi
+	$(CC) -O4 -Wall -o piclock $(PICLOCK_DEPENDS) `$(PKG_CONFIG) --libs glfw3` -Lnanovg/build -Llibmcp23s17 -Llibpifacedigital -ljpeg -lpthread -lm -lnanovg -lpifacedigital -lmcp23s17 -lpthread -lstdc++ -lboost_system -lboost_program_options -lssl -lcrypto -lGLEW -lGLU -lGL -std=c++11 `$(PKG_CONFIG) Magick++ --libs` -lb64 -lwiringPi -ldate-tz
 
 tcp_test: control_tcp.cpp async_tcp_client.cpp control_tcp.h async_tcp_client.h
 	$(CC) -O4 -Wall $(CFLAGS) -o tcp_test control_tcp.cpp async_tcp_client.cpp piclock_messages.cpp -std=c++20 -DTCP_TEST_CLIENT -lboost_system -lstdc++ -lpthread -lssl -lcrypto

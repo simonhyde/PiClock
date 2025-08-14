@@ -105,8 +105,8 @@ protected:
 class ClockMsg_SetLayout : public ClockMsg_Region
 {
 public:
-	bool bAnalogueClock, bAnalogueClockLocal, bDigitalClockUTC,
-		bDigitalClockLocal, bDate, bDateLocal, bNumbersPresent,
+	bool bAnalogueClock, bLegacyAnalogueClockLocal, bLegacyDigitalClockUTC,
+		bLegacyDigitalClockLocal, bDate, bLegacyDateLocal, bNumbersPresent,
 		bNumbersOutside, bSecondsSweep;
         std::string sImageClockFace, sImageClockHours, sImageClockMinutes, sImageClockSeconds;
 
@@ -186,7 +186,8 @@ public:
 	struct timeval target;
 	bool bHasFlashLimit;
 	long long iFlashLimit = 0;
-	ClockMsg_SetCountdown(const std::shared_ptr<int> &region, const std::string & message);
+        int daysMode = 0;
+	ClockMsg_SetCountdown(const std::shared_ptr<int> &region, const std::string & message, bool bExtended);
 };
 
 

@@ -49,9 +49,11 @@ public:
 
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text);
 	SimpleTallyState(const TallyColour &fg, const TallyColour &bg, const std::string &_text);
+	SimpleTallyState(const std::string &fg, const std::string &bg, std::shared_ptr<std::string> _text);
+	SimpleTallyState(const TallyColour &fg, const TallyColour &bg, std::shared_ptr<std::string> _text);
 
 	SimpleTallyState(const std::string &fg, const std::string &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old);
-    SimpleTallyState(const TallyColour &fg, const TallyColour &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old);
+	SimpleTallyState(const TallyColour &fg, const TallyColour &bg, const std::string &_text, const std::shared_ptr<TallyState> &_old);
 protected:
 	std::shared_ptr<TallyColour> m_FG, m_BG;
 	std::shared_ptr<std::string> m_text, m_label;
