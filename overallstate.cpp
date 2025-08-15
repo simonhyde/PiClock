@@ -309,6 +309,10 @@ bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_pt
 		{
 			pRS->UpdateFromMessage(castCmd);
 		}
+		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetTimezones>(pMsg))
+		{
+			pRS->UpdateFromMessage(castCmd);
+		}
 		else if(auto castCmd = std::dynamic_pointer_cast<ClockMsg_SetFontSizeZones>(pMsg))
 		{
 			bSizeChanged |= pRS->UpdateFromMessage(castCmd);

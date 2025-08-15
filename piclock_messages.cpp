@@ -213,6 +213,35 @@ void ClockMsg_SetLayout::Dump()
 	fprintf(stderr, "Analogue %d, LegacyAnalogueLocal %d, LegacyDigitalUTC %d, LegacyDigitalLocal %d, Date %d, LegacyLegacyDateLocal %d, NumbersPresent %d, NumbersOutside %d\n", bAnalogueClock, bLegacyAnalogueClockLocal, bLegacyDigitalClockUTC, bLegacyDigitalClockLocal, bDate, bLegacyDateLocal, bNumbersPresent, bNumbersOutside);
 }
 
+ClockMsg_SetTimezones::ClockMsg_SetTimezones(const std::shared_ptr<int> &region, const std::string & message)
+	:ClockMsg_Region(region, message)
+{
+    tzDate = get_arg(message, 1);
+    tzAnalogue = get_arg(message, 2);
+    int idx = 3;
+    while(true)
+    {
+	auto tz = get_arg_p(message, idx++);
+	auto label = get_arg_p(message, idx++);
+	if(tz)
+	{
+	    if(label)
+	    {
+		tzDigitals.push_back(std::pair<std::string,std::string>(*tz, *label));
+	    }
+	    else
+	    {
+		tzDigitals.push_back(std::pair<std::string,std::string>(*tz, ""));
+	    }
+	}
+	else
+	{
+	    break;
+	}
+    }
+}
+
+
 ClockMsg_SetLocation::ClockMsg_SetLocation(const std::shared_ptr<int> &region, const std::string & message)
 	:ClockMsg_Region(region, message)
 {
@@ -405,6 +434,8 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 		return std::make_shared<ClockMsg_SetLabel>(region, message);
 	if(cmd == "SETLAYOUT")
 		return std::make_shared<ClockMsg_SetLayout>(region, message);
+	if(cmd == "SETTIMEZONES")
+		return std::make_shared<ClockMsg_SetTimezones>(region, message);
 	if(cmd == "SETFONTSIZEZONES")
 		return std::make_shared<ClockMsg_SetFontSizeZones>(region, message);
 	return std::shared_ptr<ClockMsg>();

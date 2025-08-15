@@ -3,12 +3,19 @@
 #include "analogueclock.h"
 #include <algorithm>
 
+static const date::time_zone * lookup_tz(const std::string & name)
+{
+    if(name == "LOCAL")
+	return date::current_zone();
+    return date::locate_zone(name);
+}
+
 
 RegionState::RegionState()
 : m_bRecalcReqd(true), m_bAnalogueClock(true),m_bDate(true)
 {
-    tz_local = date::current_zone();
-    tz_utc = date::locate_zone("Etc/UTC");
+    tz_local = lookup_tz("LOCAL");
+    tz_utc = lookup_tz("Etc/UTC");
     m_AnalogueClockZone = tz_local;
     m_DigitalClocks.push_back(ClockData(tz_local,"TOD"));
     m_DateZone = tz_local;
@@ -164,6 +171,7 @@ void RegionState::RecalcTexts(NVGcontext *vg, OverallState &globalState, const t
 	}
 	comms_width = -1.0f;
 }
+
 void RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLayout> &pMsg)
 {
 	UpdateFromMessage(*pMsg);
@@ -218,6 +226,68 @@ void RegionState::UpdateFromMessage(const ClockMsg_SetLayout &msg)
 		m_DateZone = m_bLegacyDateLocal? tz_local: tz_utc;
 	}
 }
+
+void RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetTimezones> &pMsg)
+{
+	UpdateFromMessage(*pMsg);
+}
+
+void RegionState::UpdateFromMessage(const ClockMsg_SetTimezones &msg)
+{
+	if(m_bLegacyClockMode)
+	{
+		m_bLegacyClockMode = false;
+		m_bRecalcReqd = true;
+	}
+	std::vector<ClockData> digitalClocks;
+	for(const auto & data: msg.tzDigitals)
+	{
+		try
+		{
+			digitalClocks.push_back(ClockData(lookup_tz(data.first),data.second));
+		}
+		catch (...)
+		{
+			std::cerr << "Error parsing timezone: " <<data.first <<", skipping\n";
+		}
+
+	}
+	if(digitalClocks != m_DigitalClocks)
+	{
+		m_DigitalClocks = digitalClocks;
+		m_bRecalcReqd = true;
+	}
+
+	try
+	{
+		auto tz = lookup_tz(msg.tzDate);
+		if(tz != m_DateZone)
+		{
+			m_DateZone = tz;
+			m_bRecalcReqd = true;
+		}
+	}
+	catch (...)
+	{
+		std::cerr << "Error parsing timezone: " <<msg.tzDate <<", ignoring\n";
+	}
+
+	try
+	{
+		auto tz = lookup_tz(msg.tzAnalogue);
+		if(tz != m_AnalogueClockZone)
+		{
+			m_AnalogueClockZone = tz;
+			//No size recalc required for an analogue clock timezone change...
+		}
+	}
+	catch (...)
+	{
+		std::cerr << "Error parsing timezone: " <<msg.tzAnalogue <<", ignoring\n";
+	}
+
+}
+
 
 bool RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLocation> &pMsg)
 {

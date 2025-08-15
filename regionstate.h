@@ -17,19 +17,20 @@ typedef std::map<int,std::shared_ptr<RegionState>> RegionsMap;
 class ClockData
 {
     public:
-        ClockData(const date::time_zone* _tz, const std::string &_label)
-        :tz(_tz),label(_label)
-        {
-        }
+	ClockData(const date::time_zone* _tz, const std::string &_label)
+	:tz(_tz),label(_label)
+	{
+	}
 
-        bool operator==(const ClockData& other) const
-        {
-            return tz == other.tz && label == other.label && pBox == other.pBox;
-        }
+	bool operator==(const ClockData& other) const
+	{
+	    //Don't compare box in comparison...
+	    return tz == other.tz && label == other.label;
+	}
 
-        const date::time_zone *tz;
-        std::string label;
-        std::shared_ptr<DisplayBox> pBox;
+	const date::time_zone *tz;
+	std::string label;
+	std::shared_ptr<DisplayBox> pBox;
 };
 
 class RegionState
@@ -47,6 +48,10 @@ public:
 	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLayout> &pMsg);
 
 	void UpdateFromMessage(const ClockMsg_SetLayout &msg);
+
+	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetTimezones> &pMsg);
+
+	void UpdateFromMessage(const ClockMsg_SetTimezones &msg);
 
 	bool UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLocation> &pMsg);
 
@@ -75,7 +80,7 @@ public:
 	bool Rotate();
 /*
 	bool AnalogueClock(DisplayBox & dBox, bool &bLocal, std::shared_ptr<const std::map<int, VGfloat> > &hours_x, std::shared_ptr<const std::map<int, VGfloat> > &hours_y, int &numbers);
-        */
+	*/
 
 	bool DrawDate(NVGcontext *vg, const OverallState & globalState, const sys_clock_data & now);
 	bool DrawDigitals(NVGcontext *vg, const OverallState & globalState, bool bPrefix, const sys_clock_data & now);
@@ -107,11 +112,11 @@ private:
 	void DrawMacAddress(NVGcontext *vg, DisplayBox &db, const std::string &mac_addr, const Fontinfo & font);
 
 
-        const date::time_zone * tz_local, *tz_utc;
+	const date::time_zone * tz_local, *tz_utc;
 	bool m_bRecalcReqd;
 	bool m_bRotationReqd;
 	bool m_bStatusBox;
-        bool m_bImageClock;
+	bool m_bImageClock;
 	DisplayBox m_boxAnalogue;
 	int m_statusTextSize;
 	DisplayBox m_boxStatus, m_boxDate, m_boxTallies;
@@ -123,18 +128,18 @@ private:
 
 	bool m_bAnalogueClock;
 	const date::time_zone * m_AnalogueClockZone;
-        std::vector<ClockData> m_DigitalClocks;
+	std::vector<ClockData> m_DigitalClocks;
 
-        //Legacy clock information
-        bool m_bLegacyClockMode = true;
-        bool m_bLegacyAnalogueClockLocal = true;
-        bool m_bLegacyDigitalClockUTC = false;
-        bool m_bLegacyDigitalClockLocal = true;
-        bool m_bLegacyDateLocal = true;
+	//Legacy clock information
+	bool m_bLegacyClockMode = true;
+	bool m_bLegacyAnalogueClockLocal = true;
+	bool m_bLegacyDigitalClockUTC = false;
+	bool m_bLegacyDigitalClockLocal = true;
+	bool m_bLegacyDateLocal = true;
 	bool m_bDate;
 	const date::time_zone * m_DateZone;
 	bool m_bLandscape;
-        AnalogueClockState m_clockState;
+	AnalogueClockState m_clockState;
 	VGfloat m_x = 0.0f;
 	VGfloat m_y = 0.0f;
 	VGfloat m_width = 1.0;
