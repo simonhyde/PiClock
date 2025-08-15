@@ -213,7 +213,7 @@ void ClockMsg_SetLayout::Dump()
 	fprintf(stderr, "Analogue %d, LegacyAnalogueLocal %d, LegacyDigitalUTC %d, LegacyDigitalLocal %d, Date %d, LegacyLegacyDateLocal %d, NumbersPresent %d, NumbersOutside %d\n", bAnalogueClock, bLegacyAnalogueClockLocal, bLegacyDigitalClockUTC, bLegacyDigitalClockLocal, bDate, bLegacyDateLocal, bNumbersPresent, bNumbersOutside);
 }
 
-ClockMsg_SetTimezones::ClockMsg_SetTimezones(const std::shared_ptr<int> &region, const std::string & message)
+ClockMsg_SetClocks::ClockMsg_SetClocks(const std::shared_ptr<int> &region, const std::string & message)
 	:ClockMsg_Region(region, message)
 {
     tzDate = get_arg(message, 1);
@@ -366,8 +366,14 @@ ClockMsg_SetLabel::ClockMsg_SetLabel(const std::shared_ptr<int> &region, const s
 	sText = get_arg(message, 3, false);
 }
 
-std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
+std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &msg)
 {
+	//Strip any newlines or carriage returns off the end of the line, duplicating the input so we can modify it
+	std::string message = msg;
+	while(!message.empty() && (message.back() == '\r' || message.back() == '\n'))
+	{
+	    message.pop_back();
+	}
 	std::string cmd;
 	auto region = ClockMsg::ParseCmd(message, cmd);
 	if(cmd == "SETGPO")
@@ -434,8 +440,8 @@ std::shared_ptr<ClockMsg> ClockMsg_Parse(const std::string &message)
 		return std::make_shared<ClockMsg_SetLabel>(region, message);
 	if(cmd == "SETLAYOUT")
 		return std::make_shared<ClockMsg_SetLayout>(region, message);
-	if(cmd == "SETTIMEZONES")
-		return std::make_shared<ClockMsg_SetTimezones>(region, message);
+	if(cmd == "SETCLOCKS")
+		return std::make_shared<ClockMsg_SetClocks>(region, message);
 	if(cmd == "SETFONTSIZEZONES")
 		return std::make_shared<ClockMsg_SetFontSizeZones>(region, message);
 	return std::shared_ptr<ClockMsg>();

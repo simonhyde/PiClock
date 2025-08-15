@@ -114,13 +114,13 @@ public:
 	void Dump();
 };
 
-class ClockMsg_SetTimezones : public ClockMsg_Region
+class ClockMsg_SetClocks : public ClockMsg_Region
 {
 public:
         std::string tzDate;
         std::string tzAnalogue;
         std::vector<std::pair<std::string,std::string>> tzDigitals;
-        ClockMsg_SetTimezones(const std::shared_ptr<int> &region, const std::string & message);
+        ClockMsg_SetClocks(const std::shared_ptr<int> &region, const std::string & message);
 };
 
 class ClockMsg_SetLocation : public ClockMsg_Region

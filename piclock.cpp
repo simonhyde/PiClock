@@ -55,6 +55,9 @@ std::string GPIO_PULLS;
 int init_window_width = 0;
 int init_window_height = 0;
 std::string clean_exit_file("/tmp/piclock_clean_exit");
+std::string initial_command_file;
+std::string gpi_on_commands[8];
+std::string gpi_off_commands[8];
 
 void DrawFrame(NVGcontext *vg, int iwidth, int iheight);
 void NvgInit(NVGcontext *vg);
@@ -87,11 +90,28 @@ void read_settings(const std::string & filename,
 		("init_window_height", po::value<int>(&init_window_height)->default_value(0), "Initial window height, specifying 0 gives fullscreen mode")
 		("gpio_mode", po::value<int>(&GPIO_TYPE)->default_value(0), "GPIO Type, 0=PiFace Digital, 1=Raspberry Pi (not yet implemented)")
 		("gpio_pulls", po::value<std::string>(&GPIO_PULLS)->default_value("UUUUUUUU"), "GPI Pull Up/Down/Off status")
-		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=GPI/O, 2=TCP/IP, 3=TCP/IP with GPIO status passed back to controller")
+		("tally_mode", po::value<int>(&GPI_MODE)->default_value(0), "Tally Mode, 0=disabled, 1=GPI/O, 2=TCP/IP, 3=TCP/IP with GPIO status passed back to controller,5=Local GPI/O with triggered commands,4=Local GPI/O with triggered commands")
 		("tally_remote_host", po::value<std::vector<std::string>>(&tally_hosts), "Remote tally host, may be specified multiple times for multiple connections")
 		("tally_remote_port", po::value<std::string>(&TALLY_SERVICE)->default_value("6254"), "Port (or service) to connect to on (default 6254)")
 		("tally_shared_secret", po::value<std::string>(&TALLY_SECRET)->default_value("SharedSecretGoesHere"), "Shared Secret (password) for connecting to tally service")
 		("clean_exit_file", po::value<std::string>(&clean_exit_file)->default_value("/tmp/piclock_clean_exit"), "Flag file created to indicate a clean exit (from keyboard request)")
+		("initial_command_file", po::value<std::string>(&initial_command_file)->default_value(""), "File containing an initial set of commands to define layouts, etc")
+		("gpi_0_off",po::value<std::string>(&(gpi_off_commands[0]))->default_value(""), "Command to run when GPI 0 transitions to off (if in tally_mode 5)")
+		("gpi_0_on",po::value<std::string>(&(gpi_on_commands[0]))->default_value(""), "Command to run when GPI 0 transitions to on (if in tally_mode 5)")
+		("gpi_1_off",po::value<std::string>(&(gpi_off_commands[1]))->default_value(""), "Command to run when GPI 1 transitions to off (if in tally_mode 5)")
+		("gpi_1_on",po::value<std::string>(&(gpi_on_commands[1]))->default_value(""), "Command to run when GPI 1 transitions to on (if in tally_mode 5)")
+		("gpi_2_off",po::value<std::string>(&(gpi_off_commands[2]))->default_value(""), "Command to run when GPI 2 transitions to off (if in tally_mode 5)")
+		("gpi_2_on",po::value<std::string>(&(gpi_on_commands[2]))->default_value(""), "Command to run when GPI 2 transitions to on (if in tally_mode 5)")
+		("gpi_3_off",po::value<std::string>(&(gpi_off_commands[3]))->default_value(""), "Command to run when GPI 3 transitions to off (if in tally_mode 5)")
+		("gpi_3_on",po::value<std::string>(&(gpi_on_commands[3]))->default_value(""), "Command to run when GPI 3 transitions to on (if in tally_mode 5)")
+		("gpi_4_off",po::value<std::string>(&(gpi_off_commands[4]))->default_value(""), "Command to run when GPI 4 transitions to off (if in tally_mode 5)")
+		("gpi_4_on",po::value<std::string>(&(gpi_on_commands[4]))->default_value(""), "Command to run when GPI 4 transitions to on (if in tally_mode 5)")
+		("gpi_5_off",po::value<std::string>(&(gpi_off_commands[5]))->default_value(""), "Command to run when GPI 5 transitions to off (if in tally_mode 5)")
+		("gpi_5_on",po::value<std::string>(&(gpi_on_commands[5]))->default_value(""), "Command to run when GPI 5 transitions to on (if in tally_mode 5)")
+		("gpi_6_off",po::value<std::string>(&(gpi_off_commands[6]))->default_value(""), "Command to run when GPI 6 transitions to off (if in tally_mode 5)")
+		("gpi_6_on",po::value<std::string>(&(gpi_on_commands[6]))->default_value(""), "Command to run when GPI 6 transitions to on (if in tally_mode 5)")
+		("gpi_7_off",po::value<std::string>(&(gpi_off_commands[7]))->default_value(""), "Command to run when GPI 7 transitions to off (if in tally_mode 5)")
+		("gpi_7_on",po::value<std::string>(&(gpi_on_commands[7]))->default_value(""), "Command to run when GPI 7 transitions to on (if in tally_mode 5)")
 	;
 	
 	std::ifstream settings_file(filename.c_str());
@@ -161,6 +181,20 @@ int main(int argc, char *argv[]) {
 	if(GPI_MODE & 2)
 		create_tcp_threads();
 
+	if(!initial_command_file.empty())
+	{
+		try
+		{
+			std::ifstream file(initial_command_file);
+			std::string msg;
+			while(std::getline(file, msg))
+			{
+				handle_faked_tcp_message(msg);
+			}
+		}
+		catch(...)
+		{}
+	}
 	nvg_main(DrawFrame, NvgInit, init_window_width, init_window_height);
 
 	//Shouldn't ever get here, but no harm in cleaning up anyway
@@ -186,6 +220,10 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	static long prev_sec = 0;
 
 	static bool bRecalcTextsNext = true;
+
+	static bool bFirstPass = true;
+
+	static uint16_t oldGpis = 0;
 
 	auto now = std::chrono::system_clock::now();
 
@@ -250,6 +288,53 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		}
 	}
 
+	if(GPI_MODE == 3)
+	{
+		update_tcp_gpis(read_gpi());
+	}
+	else if(GPI_MODE == 5)
+	{
+		uint16_t gpis = read_gpi();
+		if(bFirstPass)
+		{
+			//Force everything to be processed
+			oldGpis = ~gpis;
+		}
+		if(gpis != oldGpis)
+		{
+			for(int i = 0; i < 8; i++)
+			{
+				auto mask = 1<<i;
+				auto maskedGpi = gpis & mask;
+				if(maskedGpi != (oldGpis & mask))
+				{
+					std::string cmds;
+					if(maskedGpi == 0)
+					{
+						cmds = gpi_off_commands[i];
+					}
+					else
+					{
+						cmds = gpi_on_commands[i];
+					}
+					if(!cmds.empty())
+					{
+						size_t start = 0;
+						size_t end;
+						while((end = cmds.find("@@_@@",start)) != std::string::npos)
+						{
+							handle_faked_tcp_message(cmds.substr(start, start - end));
+							start = end + 5;
+						}
+						handle_faked_tcp_message(cmds.substr(start));
+					}
+				}
+			}
+			oldGpis = gpis;
+		}
+	}
+
+
 	for(const auto & region : globalState.Regions)
 	{
 		std::string profName;
@@ -291,10 +376,6 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 				    TallyColour(colour_weight,0,0),
 				    "On Air");
 		}
-                else if(GPI_MODE == 3)
-                {
-			update_tcp_gpis(read_gpi());
-                }
 
 		if(pRS->HasStatusBox())
 		{
@@ -322,4 +403,5 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		//Translate back to the origin...
 		nvgRestore(vg);
 	}
+	bFirstPass = false;
 }

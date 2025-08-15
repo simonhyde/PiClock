@@ -65,6 +65,15 @@ int main(int argc, char *argv[])
 
 #endif
 
+void handle_faked_tcp_message(const std::string &message)
+{
+	auto parsed = ClockMsg_Parse(message);
+	if(parsed)
+	{
+		msgQueue.Add(parsed);
+	}
+}
+
 void handle_tcp_message(const std::string &message, client & conn, bool * pbComms)
 {
 	std::string cmd = get_arg(message,0);

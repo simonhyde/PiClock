@@ -5,4 +5,6 @@ void create_tcp_threads();
 
 void update_tcp_gpis(uint16_t values);
 
+void handle_faked_tcp_message(const std::string &msg);
+
 #endif

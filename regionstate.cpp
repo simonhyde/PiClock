@@ -89,6 +89,7 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, 
 			textTop += m_boxAnalogue.h;
 		VGfloat digitalColWidth = textWidth;
 		VGfloat digitalHeight = 0;
+		int rowCount = m_DigitalClocks.size() + (m_bDate?1:0);
 		if(!m_DigitalClocks.empty())
 		{
 			std::string clockStr = "99:99:99";
@@ -97,7 +98,7 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, 
 #endif
 			if(bDigitalClockPrefix)
 				clockStr = "TOD " + clockStr;
-			m_digitalPointSize = MaxPointSize(vg, digitalColWidth*.95f, textHeight, clockStr, global.FontDigital());
+			m_digitalPointSize = MaxPointSize(vg, digitalColWidth*.95f, textHeight/rowCount, clockStr, global.FontDigital());
 			digitalHeight = TextHeight(vg, global.FontDigital(), m_digitalPointSize)*1.1f;
 			for(auto & digital_clock: m_DigitalClocks)
 			{
@@ -183,12 +184,15 @@ void RegionState::UpdateFromMessage(const ClockMsg_SetLayout &msg)
 #define UPDATE_VAL(val,param) { auto newVal = msg.param; \
 				recalcReqd = recalcReqd || ((val) != newVal); \
 				(val) = newVal; }
-	UPDATE_VAL(m_bAnalogueClock,      bAnalogueClock)
-	UPDATE_VAL(m_bLegacyAnalogueClockLocal, bLegacyAnalogueClockLocal)
-	UPDATE_VAL(m_bLegacyDigitalClockUTC,    bLegacyDigitalClockUTC)
-	UPDATE_VAL(m_bLegacyDigitalClockLocal,  bLegacyDigitalClockLocal)
-	UPDATE_VAL(m_bDate,               bDate)
-	UPDATE_VAL(m_bLegacyDateLocal,          bLegacyDateLocal)
+	if(m_bLegacyClockMode)
+	{
+		UPDATE_VAL(m_bAnalogueClock,      bAnalogueClock)
+		UPDATE_VAL(m_bLegacyAnalogueClockLocal, bLegacyAnalogueClockLocal)
+		UPDATE_VAL(m_bLegacyDigitalClockUTC,    bLegacyDigitalClockUTC)
+		UPDATE_VAL(m_bLegacyDigitalClockLocal,  bLegacyDigitalClockLocal)
+		UPDATE_VAL(m_bDate,               bDate)
+		UPDATE_VAL(m_bLegacyDateLocal,          bLegacyDateLocal)
+	}
 	bool numbersPresent = m_clockState.Numbers != 0;
 	bool numbersOutside = m_clockState.Numbers != 2;
 	UPDATE_VAL(numbersPresent,	bNumbersPresent);
@@ -227,12 +231,12 @@ void RegionState::UpdateFromMessage(const ClockMsg_SetLayout &msg)
 	}
 }
 
-void RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetTimezones> &pMsg)
+void RegionState::UpdateFromMessage(const std::shared_ptr<ClockMsg_SetClocks> &pMsg)
 {
 	UpdateFromMessage(*pMsg);
 }
 
-void RegionState::UpdateFromMessage(const ClockMsg_SetTimezones &msg)
+void RegionState::UpdateFromMessage(const ClockMsg_SetClocks &msg)
 {
 	if(m_bLegacyClockMode)
 	{
@@ -258,13 +262,22 @@ void RegionState::UpdateFromMessage(const ClockMsg_SetTimezones &msg)
 		m_bRecalcReqd = true;
 	}
 
+	bool bOldValue = m_bDate;
 	try
 	{
-		auto tz = lookup_tz(msg.tzDate);
-		if(tz != m_DateZone)
+		if(msg.tzDate.empty())
 		{
-			m_DateZone = tz;
-			m_bRecalcReqd = true;
+			m_bDate = false;
+		}
+		else
+		{
+			m_bDate = true;
+			auto tz = lookup_tz(msg.tzDate);
+			if(tz != m_DateZone)
+			{
+				m_DateZone = tz;
+				m_bRecalcReqd = true;
+			}
 		}
 	}
 	catch (...)
@@ -272,19 +285,31 @@ void RegionState::UpdateFromMessage(const ClockMsg_SetTimezones &msg)
 		std::cerr << "Error parsing timezone: " <<msg.tzDate <<", ignoring\n";
 	}
 
+	m_bRecalcReqd = m_bRecalcReqd || (m_bDate != bOldValue);
+
+	bOldValue = m_bAnalogueClock;
 	try
 	{
-		auto tz = lookup_tz(msg.tzAnalogue);
-		if(tz != m_AnalogueClockZone)
+		if(msg.tzAnalogue.empty())
 		{
-			m_AnalogueClockZone = tz;
-			//No size recalc required for an analogue clock timezone change...
+			m_bAnalogueClock = false;
+		}
+		else
+		{
+			m_bAnalogueClock = true;
+			auto tz = lookup_tz(msg.tzAnalogue);
+			if(tz != m_AnalogueClockZone)
+			{
+				m_AnalogueClockZone = tz;
+				//No size recalc required for an analogue clock timezone change...
+			}
 		}
 	}
 	catch (...)
 	{
 		std::cerr << "Error parsing timezone: " <<msg.tzAnalogue <<", ignoring\n";
 	}
+	m_bRecalcReqd = m_bRecalcReqd || (m_bAnalogueClock != bOldValue);
 
 }
 

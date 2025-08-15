@@ -49,9 +49,9 @@ public:
 
 	void UpdateFromMessage(const ClockMsg_SetLayout &msg);
 
-	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetTimezones> &pMsg);
+	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetClocks> &pMsg);
 
-	void UpdateFromMessage(const ClockMsg_SetTimezones &msg);
+	void UpdateFromMessage(const ClockMsg_SetClocks &msg);
 
 	bool UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLocation> &pMsg);
 
