@@ -1,10 +1,16 @@
+piclock (2.5) testing; urgency=medium
+
+  * Implement proper timezone handling
+
+ -- Simon Hyde <simon@icedrop.net>  Fri, 15 Aug 2025 18:23:41 +0100
+
 piclock (2.4.1) testing; urgency=medium
 
   * Fix bug causing failure to connect to older servers
   * Fix bug in hour number colouring on clockface
   * Accept leading # on all "html" colour codes
 
- -- 91-L0N366546 <simon@icedrop.net>  Wed, 30 Oct 2024 12:45:50 +0000
+ -- Simon Hyde <simon@icedrop.net>  Wed, 30 Oct 2024 12:45:50 +0000
 
 piclock (2.4) testing; urgency=medium
 
