@@ -32,6 +32,7 @@ Each command can take 0 or more arguments, as discussed above extra arguments wi
 |float |Decimal representation of a floating-point value in UTF-8 (or ASCII) string, always parsed in double precision|
 |colour|Hexadecimal representation of a 24-bit RGB in UTF-8/ASCII optionally preceded by a # (basically the same format as 6-digit hexadecimal HTML colours with or without the leading #). Older clients don't support the leading #, but new implementations should use it for consistency with the SETLAYOUT command. Colours should always be formatted as 6 hexadecimal digits, for example 00FF00 or 00ff00 for 100% green.
 |b64   |Base64 Encoded binary data (currently only used to send images)
+|tz    |String representation of a timezone, either LOCAL for the current local zone configured on the machine running PiClock, or any TZ identifier from [the TZ Database](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones). Empty TZ string typically indicates a desire for no clock.
 
 ## Commands
 Commands may refer to the whole display, or to configure a region of the display
@@ -264,14 +265,18 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
 
   ``SETLAYOUT:analogue_clock:analogue_clock_local:digital_clock_utc:digital_clock_local:date:date_local:blank:numbers_present:numbers_outside<CR>``
 
+  The first 6 legacy parameters are ignored once a SETCLOCKS command has been received, which provides a more rich
+  way of configuring such things.
+
+
   |Argument              |Type   |Default |Description
   |----------------------|-------|--------|-----------
-  |analogue_clock        |bool   |true    |Display an analogue clock
-  |analogue_clock_local  |bool   |true    |Make any analogue clock be displayed in the local timezone
-  |digital_clock_utc     |bool   |false   |Display a digital clock showing the time in UTC
-  |digital_clock_local   |bool   |true    |Display a digital clock showing the time in the local timezone
-  |date                  |bool   |true    |Display the date
-  |date_local            |bool   |true    |Displayed date is in the local timezone
+  |analogue_clock        |bool   |true    |Legacy - Display an analogue clock
+  |analogue_clock_local  |bool   |true    |Legacy - Make any analogue clock be displayed in the local timezone
+  |digital_clock_utc     |bool   |false   |Legacy - Display a digital clock showing the time in UTC
+  |digital_clock_local   |bool   |true    |Legacy - Display a digital clock showing the time in the local timezone
+  |date                  |bool   |true    |Legacy - Display the date
+  |date_local            |bool   |true    |Legacy - Displayed date is in the local timezone
   |blank                 |string |        |Unused legacy field, left for compatibility with old PiClock devices, can contain anything, will be ignored.
   |numbers_present       |bool   |true    |Show numbers on any analogue clock
   |numbers_outside       |bool   |true    |Show numbers outside any analogue clock (otherwise inside)
@@ -280,6 +285,23 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   |image_clock_hours     |string |        |Image name (already stored with STOREIMAGE) to use for the clock hand instead of a vector hand, or a colour code in the format '#000000' for the vector drawn hand. The hand must go up vertically in this image, with the centre of the image being the pivot point at the centre of the clockface.
   |image_clock_minutes   |string |        |Image name (already stored with STOREIMAGE) to use for the clock hand instead of a vector hand, or a colour code in the format '#000000' for the vector drawn hand. The hand must go up vertically in this image, with the centre of the image being the pivot point at the centre of the clockface.
   |image_clock_seconds   |string |        |Image name (already stored with STOREIMAGE) to use for the clock hand instead of a vector hand, or a colour code in the format '#000000' for the vector drawn hand. The hand must go up vertically in this image, with the centre of the image being the pivot point at the centre of the clockface.
+
+* **SETCLOCKS**
+
+  ``SETCLOCKS:date_tz:analogue_tz:digital_clock_1_tz:digital_clock_1_label:digital_clock_2_tz:digital_clock_2_label:...<CR>``
+
+  A SETCLOCKS command for a given region will cause PiClock to ignore the first 6 parameters
+  to any SETLAYOUT commands for that area (past and future).
+
+  |Argument              |Type   |Default |Description
+  |----------------------|-------|--------|-----------
+  |date_tz               |tz     |LOCAL   |Timezone for display of date. Empty string means no date
+  |analogue_tz           |tz     |LOCAL   |Timezone for analogue clock. Empty string will give no analogue clock
+  |digital_clock_1_tz    |tz     |LOCAL   |Timezone for first digital clock. Empty string will skip first digital clock
+  |digital_clock_1_label |string |        |3 character label for this digital clock. Labels will only be displayed if more digital clocks are found somewhere on the display with more than 1 different label
+  |digital_clock_2_tz    |tz     |        |Optional timezone for second digital clock. Empty string or missing parameter will give no additional digital clock
+  |digital_clock_2_label |string |        |Optional 3 character label for this digital clock. Labels will only be displayed if more digital clocks are found somewhere on the display with more than 1 different label
+  |...                   |tz/string|      |As many additional clocks as you'd like can be specified as additional pairs of timezone and label
 
 * **SETLOCATION**
 

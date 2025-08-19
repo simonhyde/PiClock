@@ -1,6 +1,8 @@
 piclock (2.5) testing; urgency=medium
 
   * Implement proper timezone handling
+  * Add initialisation commands
+  * Implement GPI-triggered commands
 
  -- Simon Hyde <simon@icedrop.net>  Fri, 15 Aug 2025 18:23:41 +0100
 
