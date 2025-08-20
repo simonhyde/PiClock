@@ -223,7 +223,7 @@ ClockMsg_SetClocks::ClockMsg_SetClocks(const std::shared_ptr<int> &region, const
     {
 	auto tz = get_arg_p(message, idx++);
 	auto label = get_arg_p(message, idx++);
-	if(tz)
+	if(tz && !tz->empty())
 	{
 	    if(label)
 	    {
