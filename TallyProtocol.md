@@ -218,7 +218,7 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   
   Set the tally state of a given indicator box. This will destroy any countdown information for the given indicator box, and revert it to a simple text display.
   
-  **NB** *text* can contain the colon ':' character, and so cannot be followed by any further arguments.
+  **NB** *text* can contain the colon ':' character, meaning no further arguments can follow.
 
   |Argument   |Type   |Description
   |-----------|-------|-----------
@@ -230,15 +230,18 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   
 * **SETLABEL**
 
-  ``SETLABEL:row:col:text<CR>``
+  ``SETLABEL:row:col:label<CR>``
   
   Sets the label text to appear above a tally state. NB this has no affect on an indicator box which is in countdown mode (configured by *SETCOUNTDOWN*), only tally mode (configured by *SETTALLY*)
+
+  **NB** *label* can contain the colon ':' character, meaning no further arguments can follow.
+
 
   |Argument   |Type   |Description
   |-----------|-------|-----------
   |row        |int    |Row number (counting from 0) of indicator box
   |col        |int    |Column number (counting from 0) of indicator box
-  |text       |string |Text to display on indicator box, this text can contain the colon ':' character, meaning no further arguments can follow
+  |label      |string |Text to display inside indicator box, above the tally state. This text can contain the colon ':' character, meaning no further arguments can follow
   
 
 * **SETCOUNTDOWN**
@@ -247,8 +250,8 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
 
   Sets the given indicator box to show a countdown to the time represented by target_secs and target_usecs
 
-  **NB** *label* can contain the colon ':' character, and so cannot be followed by any further arguments.
-  
+  **NB** *label* can contain the colon ':' character, meaning no further arguments can follow.
+
 
   |Argument    |Type   |Description
   |------------|-------|-----------
@@ -259,7 +262,7 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   |target_secs |int64  |Target time (at which countdown will become 0) in number of seconds since 01/01/1970 00:00:00 UTC
   |target_usecs|int    |Any extra fractional seconds to add onto target_secs in microseconds
   |flash       |int    |Flash limit. If this field is empty, then no flash limit is specified, otherwise when *flash* seconds are left before the target time, the indicator will start to flash (by exchanging foreground and background colours) with a frequency of 1Hz
-  |label	   |string |Text to display inside indicator box, above the countdown. This text can contain the colon ':' character, so cannot be followed by any extra arguments
+  |label	     |string |Text to display inside indicator box, above the countdown. This text can contain the colon ':' character, meaning no further arguments can follow
 
 * **SETLAYOUT**
 
