@@ -229,9 +229,12 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   
 * **SETLABEL**
 
-  ``SETLABEL:row:col:text<CR>``
+  ``SETLABEL:row:col:label<CR>``
   
   Sets the label text to appear above a tally state. NB this has no affect on an indicator box which is in countdown mode (configured by *SETCOUNTDOWN*), only tally mode (configured by *SETTALLY*)
+
+  **NB** *label* can contain the colon ':' character, meaning no further arguments can follow.
+
 
   |Argument   |Type   |Description
   |-----------|-------|-----------
@@ -247,7 +250,7 @@ All region commands can be prefixed by a number (an int, in decimal format as a 
   Sets the given indicator box to show a countdown to the time represented by target_secs and target_usecs
 
   **NB** *label* can contain the colon ':' character, meaning no further arguments can follow.
-  
+
 
   |Argument    |Type   |Description
   |------------|-------|-----------
