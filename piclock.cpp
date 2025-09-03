@@ -56,8 +56,8 @@ int init_window_width = 0;
 int init_window_height = 0;
 std::string clean_exit_file("/tmp/piclock_clean_exit");
 std::string initial_command_file;
-std::string gpi_on_commands[8];
-std::string gpi_off_commands[8];
+std::vector<std::string> gpi_on_commands[8];
+std::vector<std::string> gpi_off_commands[8];
 
 void DrawFrame(NVGcontext *vg, int iwidth, int iheight);
 void NvgInit(NVGcontext *vg);
@@ -96,22 +96,22 @@ void read_settings(const std::string & filename,
 		("tally_shared_secret", po::value<std::string>(&TALLY_SECRET)->default_value("SharedSecretGoesHere"), "Shared Secret (password) for connecting to tally service")
 		("clean_exit_file", po::value<std::string>(&clean_exit_file)->default_value("/tmp/piclock_clean_exit"), "Flag file created to indicate a clean exit (from keyboard request)")
 		("initial_command_file", po::value<std::string>(&initial_command_file)->default_value(""), "File containing an initial set of commands to define layouts, etc")
-		("gpi_0_off",po::value<std::string>(&(gpi_off_commands[0]))->default_value(""), "Command to run when GPI 0 transitions to off (if in tally_mode 5)")
-		("gpi_0_on",po::value<std::string>(&(gpi_on_commands[0]))->default_value(""), "Command to run when GPI 0 transitions to on (if in tally_mode 5)")
-		("gpi_1_off",po::value<std::string>(&(gpi_off_commands[1]))->default_value(""), "Command to run when GPI 1 transitions to off (if in tally_mode 5)")
-		("gpi_1_on",po::value<std::string>(&(gpi_on_commands[1]))->default_value(""), "Command to run when GPI 1 transitions to on (if in tally_mode 5)")
-		("gpi_2_off",po::value<std::string>(&(gpi_off_commands[2]))->default_value(""), "Command to run when GPI 2 transitions to off (if in tally_mode 5)")
-		("gpi_2_on",po::value<std::string>(&(gpi_on_commands[2]))->default_value(""), "Command to run when GPI 2 transitions to on (if in tally_mode 5)")
-		("gpi_3_off",po::value<std::string>(&(gpi_off_commands[3]))->default_value(""), "Command to run when GPI 3 transitions to off (if in tally_mode 5)")
-		("gpi_3_on",po::value<std::string>(&(gpi_on_commands[3]))->default_value(""), "Command to run when GPI 3 transitions to on (if in tally_mode 5)")
-		("gpi_4_off",po::value<std::string>(&(gpi_off_commands[4]))->default_value(""), "Command to run when GPI 4 transitions to off (if in tally_mode 5)")
-		("gpi_4_on",po::value<std::string>(&(gpi_on_commands[4]))->default_value(""), "Command to run when GPI 4 transitions to on (if in tally_mode 5)")
-		("gpi_5_off",po::value<std::string>(&(gpi_off_commands[5]))->default_value(""), "Command to run when GPI 5 transitions to off (if in tally_mode 5)")
-		("gpi_5_on",po::value<std::string>(&(gpi_on_commands[5]))->default_value(""), "Command to run when GPI 5 transitions to on (if in tally_mode 5)")
-		("gpi_6_off",po::value<std::string>(&(gpi_off_commands[6]))->default_value(""), "Command to run when GPI 6 transitions to off (if in tally_mode 5)")
-		("gpi_6_on",po::value<std::string>(&(gpi_on_commands[6]))->default_value(""), "Command to run when GPI 6 transitions to on (if in tally_mode 5)")
-		("gpi_7_off",po::value<std::string>(&(gpi_off_commands[7]))->default_value(""), "Command to run when GPI 7 transitions to off (if in tally_mode 5)")
-		("gpi_7_on",po::value<std::string>(&(gpi_on_commands[7]))->default_value(""), "Command to run when GPI 7 transitions to on (if in tally_mode 5)")
+		("gpi_0_off",po::value<std::vector<std::string>>(&(gpi_off_commands[0])), "Command(s) to run when GPI 0 transitions to off (if in tally_mode 5)")
+		("gpi_0_on",po::value<std::vector<std::string>>(&(gpi_on_commands[0])), "Command(s) to run when GPI 0 transitions to on (if in tally_mode 5)")
+		("gpi_1_off",po::value<std::vector<std::string>>(&(gpi_off_commands[1])), "Command(s) to run when GPI 1 transitions to off (if in tally_mode 5)")
+		("gpi_1_on",po::value<std::vector<std::string>>(&(gpi_on_commands[1])), "Command(s) to run when GPI 1 transitions to on (if in tally_mode 5)")
+		("gpi_2_off",po::value<std::vector<std::string>>(&(gpi_off_commands[2])), "Command(s) to run when GPI 2 transitions to off (if in tally_mode 5)")
+		("gpi_2_on",po::value<std::vector<std::string>>(&(gpi_on_commands[2])), "Command(s) to run when GPI 2 transitions to on (if in tally_mode 5)")
+		("gpi_3_off",po::value<std::vector<std::string>>(&(gpi_off_commands[3])), "Command(s) to run when GPI 3 transitions to off (if in tally_mode 5)")
+		("gpi_3_on",po::value<std::vector<std::string>>(&(gpi_on_commands[3])), "Command(s) to run when GPI 3 transitions to on (if in tally_mode 5)")
+		("gpi_4_off",po::value<std::vector<std::string>>(&(gpi_off_commands[4])), "Command(s) to run when GPI 4 transitions to off (if in tally_mode 5)")
+		("gpi_4_on",po::value<std::vector<std::string>>(&(gpi_on_commands[4])), "Command(s) to run when GPI 4 transitions to on (if in tally_mode 5)")
+		("gpi_5_off",po::value<std::vector<std::string>>(&(gpi_off_commands[5])), "Command(s) to run when GPI 5 transitions to off (if in tally_mode 5)")
+		("gpi_5_on",po::value<std::vector<std::string>>(&(gpi_on_commands[5])), "Command(s) to run when GPI 5 transitions to on (if in tally_mode 5)")
+		("gpi_6_off",po::value<std::vector<std::string>>(&(gpi_off_commands[6])), "Command(s) to run when GPI 6 transitions to off (if in tally_mode 5)")
+		("gpi_6_on",po::value<std::vector<std::string>>(&(gpi_on_commands[6])), "Command(s) to run when GPI 6 transitions to on (if in tally_mode 5)")
+		("gpi_7_off",po::value<std::vector<std::string>>(&(gpi_off_commands[7])), "Command(s) to run when GPI 7 transitions to off (if in tally_mode 5)")
+		("gpi_7_on",po::value<std::vector<std::string>>(&(gpi_on_commands[7])), "Command(s) to run when GPI 7 transitions to on (if in tally_mode 5)")
 	;
 	
 	std::ifstream settings_file(filename.c_str());
@@ -308,25 +308,13 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 				auto maskedGpi = gpis & mask;
 				if(maskedGpi != (oldGpis & mask))
 				{
-					std::string cmds;
-					if(maskedGpi == 0)
+					const auto &cmds = (maskedGpi == 0)?  gpi_off_commands[i] : gpi_on_commands[i];
+					for(auto cmd : cmds)
 					{
-						cmds = gpi_off_commands[i];
-					}
-					else
-					{
-						cmds = gpi_on_commands[i];
-					}
-					if(!cmds.empty())
-					{
-						size_t start = 0;
-						size_t end;
-						while((end = cmds.find("@@_@@",start)) != std::string::npos)
+						if(!cmd.empty())
 						{
-							handle_faked_tcp_message(cmds.substr(start, start - end));
-							start = end + 5;
+							handle_faked_tcp_message(cmd);
 						}
-						handle_faked_tcp_message(cmds.substr(start));
 					}
 				}
 			}
