@@ -4,14 +4,15 @@
 #include <memory>
 #include "tallycolour.h"
 #include "piclock_messages.h"
+#include "tzinfo.h"
 
 class TallyState
 {
 public:
-	virtual std::shared_ptr<TallyColour> FG(const struct timeval &curTime) const = 0;
-	virtual std::shared_ptr<TallyColour> BG(const struct timeval &curTime) const = 0;
-	virtual std::shared_ptr<std::string> Text(const struct timeval &curTime) const = 0;
-	virtual std::shared_ptr<std::string> Label(const struct timeval &curTime) const = 0;
+	virtual std::shared_ptr<TallyColour> FG(const sys_clock_data &now) const = 0;
+	virtual std::shared_ptr<TallyColour> BG(const sys_clock_data &now) const = 0;
+	virtual std::shared_ptr<std::string> Text(const sys_clock_data &now) const = 0;
+	virtual std::shared_ptr<std::string> Label(const sys_clock_data &now) const = 0;
 	virtual std::shared_ptr<TallyState>  SetLabel(const std::string &lbl) const = 0;
 	virtual bool IsDigitalClock() const = 0;
 	virtual bool Equals(std::shared_ptr<TallyState> other) const = 0;
@@ -20,19 +21,19 @@ public:
 class SimpleTallyState  :  public TallyState
 {
 public:
-	std::shared_ptr<TallyColour> FG(const struct timeval &curTime) const override
+	std::shared_ptr<TallyColour> FG(const sys_clock_data &now) const override
 	{
 		return m_FG;
 	}
-	std::shared_ptr<TallyColour> BG(const struct timeval &curTime) const override
+	std::shared_ptr<TallyColour> BG(const sys_clock_data &now) const override
 	{
 		return m_BG;
 	}
-	std::shared_ptr<std::string> Text(const struct timeval &curTime) const override
+	std::shared_ptr<std::string> Text(const sys_clock_data &now) const override
 	{
 		return m_text;
 	}
-	std::shared_ptr<std::string> Label(const struct timeval &curTime) const override
+	std::shared_ptr<std::string> Label(const sys_clock_data &now) const override
 	{
 		return m_label;
 	}

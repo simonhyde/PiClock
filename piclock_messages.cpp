@@ -339,12 +339,13 @@ ClockMsg_SetIndicator::ClockMsg_SetIndicator(const std::shared_ptr<int> &region,
 }
 
 ClockMsg_SetCountdown::ClockMsg_SetCountdown(const std::shared_ptr<int> &region, const std::string & message, bool bExtendedArguments)
-	:ClockMsg_SetIndicator(region, message, bExtendedArguments? 8 : 14)
+	:ClockMsg_SetIndicator(region, message, bExtendedArguments? 14 : 8)
 {
 	colFg = TallyColour(get_arg(message, 3));
 	colBg = TallyColour(get_arg(message, 4));
-	target.tv_sec = get_arg_ll(message, 5);
-	target.tv_usec = get_arg_l(message, 6);
+	std::chrono::seconds seconds_since_epoch(get_arg_ll(message, 5));
+	target = sys_clock_data(seconds_since_epoch);
+	target += std::chrono::milliseconds(get_arg_l(message,6));
 	auto flash = get_arg_pll(message, 7);
 	if((bHasFlashLimit = (bool)flash))
 		iFlashLimit = *flash;

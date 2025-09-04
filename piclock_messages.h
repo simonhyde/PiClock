@@ -8,6 +8,7 @@
 #include <queue>
 #include <Magick++.h>
 #include "tallycolour.h"
+#include "tzinfo.h"
 
 typedef float VGfloat;
 
@@ -108,7 +109,7 @@ public:
 	bool bAnalogueClock, bLegacyAnalogueClockLocal, bLegacyDigitalClockUTC,
 		bLegacyDigitalClockLocal, bDate, bLegacyDateLocal, bNumbersPresent,
 		bNumbersOutside, bSecondsSweep;
-        std::string sImageClockFace, sImageClockHours, sImageClockMinutes, sImageClockSeconds;
+	std::string sImageClockFace, sImageClockHours, sImageClockMinutes, sImageClockSeconds;
 
 	ClockMsg_SetLayout(const std::shared_ptr<int> &region, const std::string & message);
 	void Dump();
@@ -117,10 +118,10 @@ public:
 class ClockMsg_SetClocks : public ClockMsg_Region
 {
 public:
-        std::string tzDate;
-        std::string tzAnalogue;
-        std::vector<std::pair<std::string,std::string>> tzDigitals;
-        ClockMsg_SetClocks(const std::shared_ptr<int> &region, const std::string & message);
+	std::string tzDate;
+	std::string tzAnalogue;
+	std::vector<std::pair<std::string,std::string>> tzDigitals;
+	ClockMsg_SetClocks(const std::shared_ptr<int> &region, const std::string & message);
 };
 
 class ClockMsg_SetLocation : public ClockMsg_Region
@@ -192,10 +193,10 @@ protected:
 class ClockMsg_SetCountdown: public ClockMsg_SetIndicator
 {
 public:
-	struct timeval target;
+	sys_clock_data target;
 	bool bHasFlashLimit;
 	long long iFlashLimit = 0;
-        int daysMode = 0;
+	int daysMode = 0;
 	ClockMsg_SetCountdown(const std::shared_ptr<int> &region, const std::string & message, bool bExtended);
 };
 

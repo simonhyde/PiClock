@@ -43,7 +43,7 @@ public:
 	bool LayoutEqual(const RegionState & other) const;
 	bool RecalcDimensions(NVGcontext* vg, const OverallState & global, const std::chrono::time_point<std::chrono::system_clock> & now, VGfloat width, VGfloat height, VGfloat displayWidth, VGfloat displayHeight, bool bStatus, bool bDigitalClockPrefix);
 
-	void RecalcTexts(NVGcontext *vg, OverallState &globalState, const timeval &tval);
+	void RecalcTexts(NVGcontext *vg, OverallState &globalState, const sys_clock_data &now);
 	
 	void UpdateFromMessage(const std::shared_ptr<ClockMsg_SetLayout> &pMsg);
 
@@ -70,7 +70,7 @@ public:
 
 	const std::string & GetZone(int row, int col);
 
-	void DrawTallies(NVGcontext * vg, OverallState &global, const timeval & tval);
+	void DrawTallies(NVGcontext * vg, OverallState &global, const sys_clock_data & now);
 
 	bool DrawAnalogueClock(NVGcontext *vg, const sys_clock_data & now, const Fontinfo & font_hours, ImagesMap &images);
 
@@ -106,7 +106,7 @@ public:
 	void ForceRecalc();
 
 private:
-	void DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval);
+	void DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const sys_clock_data &now);
 	void DrawNtpState(NVGcontext *vg, DisplayBox &db, int ntp_state, bool bFlashState, const Fontinfo & font);
 	bool DrawConnComms(NVGcontext *vg, DisplayBox &db, unsigned int connCount, const std::map<unsigned int,bool> &connComms, const Fontinfo & font);
 	void DrawMacAddress(NVGcontext *vg, DisplayBox &db, const std::string &mac_addr, const Fontinfo & font);

@@ -30,7 +30,7 @@ public:
 
 	void SetLandscape(bool bLandscape);
 
-        void NvgInit(NVGcontext *vg);
+	void NvgInit(NVGcontext *vg);
 
     RegionsMap Regions;
 
@@ -39,7 +39,7 @@ public:
     std::map<std::string, int> TextSizes;
 	std::map<std::string, int> LabelSizes;
 
-    bool HandleClockMessages(NVGcontext *vg, std::queue<std::shared_ptr<ClockMsg> > &msgs, struct timeval & tvCur);
+    bool HandleClockMessages(NVGcontext *vg, std::queue<std::shared_ptr<ClockMsg> > &msgs, const sys_clock_data & now);
 
 
 private:

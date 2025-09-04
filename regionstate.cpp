@@ -133,7 +133,7 @@ bool RegionState::RecalcDimensions(NVGcontext* vg, const OverallState & global, 
 	return false;
 }
 
-void RegionState::RecalcTexts(NVGcontext *vg, OverallState &globalState, const timeval &tval)
+void RegionState::RecalcTexts(NVGcontext *vg, OverallState &globalState, const sys_clock_data &now)
 {
 	DisplayBox &db = m_boxTallies;
 	VGfloat row_height = (db.h)/((VGfloat)TD.nRows);
@@ -153,12 +153,12 @@ void RegionState::RecalcTexts(NVGcontext *vg, OverallState &globalState, const t
 			auto item = TD.displays[row][col];
 			if(!item)
 				continue;
-			auto label = item->Label(tval);
-			auto text = item->Text(tval);
+			auto label = item->Label(now);
+			auto text = item->Text(now);
 			auto iter = globalState.Images.end();
 			if(text && ((iter = globalState.Images.find(*text)) == globalState.Images.end() || !iter->second.IsValid()))
 			{
-				auto maxItemSize = MaxPointSize(vg, col_width * .9f, row_height * (label? .6f :.9f), item->Text(tval)->c_str(), globalState.FontTally(item->IsDigitalClock()));
+				auto maxItemSize = MaxPointSize(vg, col_width * .9f, row_height * (label? .6f :.9f), item->Text(now)->c_str(), globalState.FontTally(item->IsDigitalClock()));
 				if(globalState.TextSizes[zone] == 0 || globalState.TextSizes[zone] > maxItemSize)
 					globalState.TextSizes[zone] = maxItemSize;
 				if(label)
@@ -510,12 +510,12 @@ std::string RegionState::FormatTime(const time_info &data)
 #endif
 }
 
-void RegionState::DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const timeval &tval)
+void RegionState::DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, const int col, OverallState & global, const sys_clock_data &now)
 {
 	auto curTally = TD.displays[row][col];
 	if(!curTally)
 			return;
-	auto text = curTally->Text(tval);
+	auto text = curTally->Text(now);
 	auto iter = global.Images.end();
 	int img_handle = 0;
 	if(text && (iter = global.Images.find(*text)) != global.Images.end() && iter->second.IsValid())
@@ -530,16 +530,16 @@ void RegionState::DrawTally(NVGcontext* vg, DisplayBox &dbTally, const int row, 
 	}
 	if(img_handle == 0)
 	{
-		curTally->BG(tval)->Fill(vg);
+		curTally->BG(now)->Fill(vg);
 		dbTally.Roundrect(vg, dbTally.h/9.8f);
-		curTally->FG(tval)->Fill(vg);
+		curTally->FG(now)->Fill(vg);
 		const auto & zone = GetZone(row,col);
-		dbTally.TextMid(vg, text, global.FontTally(curTally->IsDigitalClock()), global.TextSizes[zone], global.LabelSizes[zone], curTally->Label(tval), global.FontTallyLabel());
+		dbTally.TextMid(vg, text, global.FontTally(curTally->IsDigitalClock()), global.TextSizes[zone], global.LabelSizes[zone], curTally->Label(now), global.FontTallyLabel());
 	}
 
 }
 
-void RegionState::DrawTallies(NVGcontext * vg, OverallState &global, const timeval & tval)
+void RegionState::DrawTallies(NVGcontext * vg, OverallState &global, const sys_clock_data & now)
 {
 	if(TD.nRows > 0)
 	{
@@ -560,7 +560,7 @@ void RegionState::DrawTallies(NVGcontext * vg, OverallState &global, const timev
 			for(int col = 0; col < col_count; col++)
 			{
 				DisplayBox dbTally(((VGfloat)col)*col_width + db.w/100.0f, base_y, col_width - buffer, row_height - buffer);
-				DrawTally(vg, dbTally, row, col, global, tval);
+				DrawTally(vg, dbTally, row, col, global, now);
 			}
 		}
 	}

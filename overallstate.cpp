@@ -129,7 +129,7 @@ void OverallState::SetLandscape(bool bLandscape)
 }
 
 
-bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_ptr<ClockMsg> > &msgs, struct timeval & tvCur)
+bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_ptr<ClockMsg> > &msgs, const sys_clock_data & now)
 {
 	bool bSizeChanged = false;
 	while(!msgs.empty())
@@ -264,8 +264,8 @@ bool OverallState::HandleClockMessages(NVGcontext *vg, std::queue<std::shared_pt
 				bSizeChanged = true;
 			else if(!bSizeChanged)
 			{
-				auto textOld = pOldState->Text(tvCur);
-				auto textNew = pNewState->Text(tvCur);
+				auto textOld = pOldState->Text(now);
+				auto textNew = pNewState->Text(now);
 				bool bDigitalOld = pOldState->IsDigitalClock();
 				bool bDigitalNew = pNewState->IsDigitalClock();
 				if(bDigitalOld != bDigitalNew)

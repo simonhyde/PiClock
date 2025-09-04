@@ -1,31 +1,31 @@
 #include "countdownclock.h"
 
-bool CountdownClock::Invert(const struct timeval &curTime) const
+bool CountdownClock::Invert(const sys_clock_data &now) const
 {
 	if(m_pFlashLimit)
 	{
-		auto left = TimeLeft(curTime, m_target);
-		if((left.tv_sec <= *m_pFlashLimit)
-			&& (std::abs(left.tv_usec) < 500000))
+		auto left = TimeLeft(now, m_target);
+		if((std::chrono::ceil<std::chrono::seconds>(left).count() <= *m_pFlashLimit)
+			&& (std::abs(left.count() % 1000) > 500))
 		return true;
 	}
 	return false;
 }
-std::shared_ptr<TallyColour> CountdownClock::FG(const struct timeval &curTime) const
+std::shared_ptr<TallyColour> CountdownClock::FG(const sys_clock_data &now) const
 {
-	if(Invert(curTime))
-		return SimpleTallyState::BG(curTime);
-	return SimpleTallyState::FG(curTime);
+	if(Invert(now))
+		return SimpleTallyState::BG(now);
+	return SimpleTallyState::FG(now);
 }
-std::shared_ptr<TallyColour> CountdownClock::BG(const struct timeval &curTime) const
+std::shared_ptr<TallyColour> CountdownClock::BG(const sys_clock_data &now) const
 {
-	if(Invert(curTime))
-		return SimpleTallyState::FG(curTime);
-	return SimpleTallyState::BG(curTime);
+	if(Invert(now))
+		return SimpleTallyState::FG(now);
+	return SimpleTallyState::BG(now);
 }
-std::shared_ptr<std::string> CountdownClock::Text(const struct timeval &curTime) const
+std::shared_ptr<std::string> CountdownClock::Text(const sys_clock_data &now) const
 {
-	time_t secs = SecsLeft(curTime,m_target);
+	time_t secs = SecsLeft(now,m_target);
 	char buf[256];
 	char negChar = (secs < 0)? '-': ' ';
 	secs = std::abs(secs);
@@ -45,9 +45,9 @@ std::shared_ptr<TallyState> CountdownClock::SetLabel(const std::string & label) 
 {
 	return std::shared_ptr<TallyState>();
 }
-std::shared_ptr<std::string> CountdownClock::Label(const struct timeval &curTime) const
+std::shared_ptr<std::string> CountdownClock::Label(const sys_clock_data &now) const
 {
-	return SimpleTallyState::Text(curTime);
+	return SimpleTallyState::Text(now);
 }
 bool CountdownClock::IsDigitalClock() const
 {
@@ -64,8 +64,7 @@ bool CountdownClock::Equals(std::shared_ptr<TallyState> other) const
 	return derived != NULL 
 		&& derived->m_FG->Equals(*m_FG)
 		&& derived->m_BG->Equals(*m_BG)
-		&& derived->m_target.tv_sec == m_target.tv_sec
-		&& derived->m_target.tv_usec == m_target.tv_usec
+		&& derived->m_target == m_target
 		&& *(derived->m_text) == *(m_text)
 		&& ((!m_pFlashLimit && !derived->m_pFlashLimit.get())
 			|| (m_pFlashLimit && derived->m_pFlashLimit
@@ -80,35 +79,17 @@ CountdownClock::CountdownClock(const ClockMsg_SetCountdown &msg)
 	:CountdownClock(msg.colFg, msg.colBg, msg.sText, msg.target, msg.bHasFlashLimit? std::make_shared<long long>(msg.iFlashLimit) : std::shared_ptr<long long>(), msg.daysMode)
 {}
 
-CountdownClock::CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const struct timeval & _target, std::shared_ptr<long long> pflash, int daysMode)
+CountdownClock::CountdownClock(const std::string &fg, const std::string &bg, const std::string &_label, const sys_clock_data & _target, std::shared_ptr<long long> pflash, int daysMode)
 	:SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash), m_daysMode(daysMode)
 {}
-CountdownClock::CountdownClock(const TallyColour & fg, const TallyColour &bg, const std::string &_label, const struct timeval &_target, std::shared_ptr<long long> pflash, int daysMode)
+CountdownClock::CountdownClock(const TallyColour & fg, const TallyColour &bg, const std::string &_label, const sys_clock_data &_target, std::shared_ptr<long long> pflash, int daysMode)
 	:SimpleTallyState(fg,bg, _label), m_target(_target), m_pFlashLimit(pflash), m_daysMode(daysMode)
 {}
-struct timeval CountdownClock::TimeLeft(const timeval & current, const timeval & target)
+std::chrono::milliseconds CountdownClock::TimeLeft(const sys_clock_data & now, const sys_clock_data & target)
 {
-	struct timeval ret;
-	ret.tv_sec = target.tv_sec - current.tv_sec;
-	ret.tv_usec = target.tv_usec - current.tv_usec;
-	while(ret.tv_usec < 0 && ret.tv_sec > 0)
-	{
-		ret.tv_usec += 1000000;
-		ret.tv_sec -= 1;
-	}
-	while(ret.tv_usec > 0 && ret.tv_sec < 0)
-	{
-		ret.tv_usec -= 1000000;
-		ret.tv_sec += 1;
-	}
-	return ret;
+	return std::chrono::ceil<std::chrono::milliseconds>(target - now);
 }
-time_t CountdownClock::SecsLeft(const timeval & current, const timeval & target)
+time_t CountdownClock::SecsLeft(const sys_clock_data & now, const sys_clock_data & target)
 {
-	auto left = TimeLeft(current,target);
-	//We want equivalent of ceil()
-	auto ret = left.tv_sec;
-	if(left.tv_usec > 0)
-		ret += 1;
-	return ret;
+	return std::chrono::ceil<std::chrono::seconds>(target - now).count();
 }

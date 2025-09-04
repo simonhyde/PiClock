@@ -145,7 +145,6 @@ void KeyCallback(unsigned char key, int x, int y)
 /* All variables which used to be local to main(), which we've had
    to make global now that drawing is done via a callback
  */
-static struct timeval tval;
 static ntpstate_t ntp_state_data;
 static int vrate;
 static int hrate;
@@ -159,9 +158,6 @@ int main(int argc, char *argv[]) {
 	if(argc > 1)
 		configFile = argv[1];
 	read_settings(configFile, vm);
-
-	gettimeofday(&tval, NULL);//Just for handle_clock_messages on first pass
-
 
 	srand(time(NULL));
 	vrate = 1800 + (((VGfloat)rand())*1800.0f)/RAND_MAX;
@@ -177,7 +173,7 @@ int main(int argc, char *argv[]) {
 	resize_param.sched_priority = sched_get_priority_min(SCHED_IDLE);
 	pthread_setschedparam(resize_thread.native_handle(), SCHED_IDLE, &resize_param);
 	if(GPI_MODE & 1)
-                gpio_init(GPIO_TYPE, GPIO_PULLS);
+		gpio_init(GPIO_TYPE, GPIO_PULLS);
 	if(GPI_MODE & 2)
 		create_tcp_threads();
 
@@ -226,6 +222,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	static uint16_t oldGpis = 0;
 
 	auto now = std::chrono::system_clock::now();
+	auto now_epoch_secs = std::chrono::floor<std::chrono::seconds>(now.time_since_epoch()).count();
 
 	RotateTextClipCache();
 
@@ -235,7 +232,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	//Handle any queued messages
 	std::queue<std::shared_ptr<ClockMsg> > newMsgs;
 	msgQueue.Get(newMsgs);
-	bool bRecalcTexts = globalState.HandleClockMessages(vg, newMsgs, tval) || bRecalcTextsNext;
+	bool bRecalcTexts = globalState.HandleClockMessages(vg, newMsgs, now) || bRecalcTextsNext;
 	bRecalcTextsNext = false;
 	
 	bool bDigitalClockPrefix = RegionState::DigitalClockPrefix(globalState.Regions);
@@ -260,9 +257,9 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 	//Screen saver offsets...
 	if(globalState.ScreenSaver())
 	{
-		if(tval.tv_sec != prev_sec)
+		if(now_epoch_secs != prev_sec)
 		{
-			prev_sec =  tval.tv_sec;
+			prev_sec =  now_epoch_secs;
 			h_offset_pos = abs(prev_sec%(hrate*2) - hrate)*offset/hrate;
 			v_offset_pos = abs(prev_sec%(vrate*2) - vrate)*offset/vrate;
 		}
@@ -284,7 +281,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		{
 			auto &RS = *region.second;
 			RS.SetDefaultZone("R" + std::to_string(region.first));
-			RS.RecalcTexts(vg, globalState, tval);
+			RS.RecalcTexts(vg, globalState, now);
 		}
 	}
 
@@ -367,13 +364,13 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 
 		if(pRS->HasStatusBox())
 		{
-			bool bAnyComms = pRS->DrawStatusArea(vg, ntp_state_data.status, tval.tv_sec % 2, (GPI_MODE & 2)? tally_hosts.size() : 0, bComms, mac_address, globalState.FontStatus());
+			bool bAnyComms = pRS->DrawStatusArea(vg, ntp_state_data.status, now_epoch_secs % 2, (GPI_MODE & 2)? tally_hosts.size() : 0, bComms, mac_address, globalState.FontStatus());
 			if(bAnyComms)
 			{
-				tm_last_comms_good = tval.tv_sec;
+				tm_last_comms_good = now_epoch_secs;
 			}
 			//Stop showing stuff after 5 seconds of comms failed...
-			else if(tm_last_comms_good < tval.tv_sec - 5)
+			else if(tm_last_comms_good < now_epoch_secs - 5)
 			{
 				for(auto & reg: globalState.Regions)
 				{
@@ -384,7 +381,7 @@ void DrawFrame(NVGcontext *vg, int iwidth, int iheight)
 		//Draw Tally Displays
 		if(GPI_MODE)
 		{
-			pRS->DrawTallies(vg, globalState, tval);
+			pRS->DrawTallies(vg, globalState, now);
 		}
 		//Right, now start drawing the clock if it exists in our region
 		pRS->DrawAnalogueClock(vg, now, globalState.FontHours(), globalState.Images);
