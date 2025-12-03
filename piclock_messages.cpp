@@ -345,7 +345,7 @@ ClockMsg_SetCountdown::ClockMsg_SetCountdown(const std::shared_ptr<int> &region,
 	colBg = TallyColour(get_arg(message, 4));
 	std::chrono::seconds seconds_since_epoch(get_arg_ll(message, 5));
 	target = sys_clock_data(seconds_since_epoch);
-	target += std::chrono::milliseconds(get_arg_l(message,6));
+	target += std::chrono::microseconds(get_arg_l(message,6));
 	auto flash = get_arg_pll(message, 7);
 	if((bHasFlashLimit = (bool)flash))
 		iFlashLimit = *flash;
