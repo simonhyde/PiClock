@@ -31,12 +31,12 @@ std::shared_ptr<std::string> CountdownClock::Text(const sys_clock_data &now) con
 	secs = std::abs(secs);
 	if(m_daysMode == 1 || (m_daysMode == 2 && secs > 86400))
 	{
-		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld:%02ld",
+		snprintf(buf, sizeof(buf) - 1, "%c%02lld:%02lld:%02lld:%02lld",
 			negChar, secs/86400, (secs/3600)%24, (secs/60)%60, secs %60);
 	}
 	else
 	{
-		snprintf(buf, sizeof(buf) - 1, "%c%02ld:%02ld:%02ld",
+		snprintf(buf, sizeof(buf) - 1, "%c%02lld:%02lld:%02lld",
 			negChar, secs/3600, (secs/60)%60, secs %60);
 	}
 	return std::make_shared<std::string>(buf);
